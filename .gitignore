@@ -1,0 +1,49 @@
+# Bỏ qua các file nhị phân được build
+main
+*.exe
+*.out
+*.test
+
+# Thư mục build
+/build/
+/bin/
+/dist/
+
+# Bỏ qua dữ liệu cache, logs
+*.log
+*.tmp
+*.swp
+*.bak
+
+
+vendor/
+/pkg/
+
+# Docker và môi trường
+docker-compose.override.yml
+text.txt
+# VSCode
+.vscode/
+*.code-workspace
+
+# MacOS
+.DS_Store
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Linux
+*~
+
+# Git
+.git/
+
+# Nếu có các IDE khác (JetBrains, Eclipse,...)
+.idea/
+*.iml
+.env
+
+credentials/google-credentials.json
+

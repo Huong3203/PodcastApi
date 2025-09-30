@@ -1,0 +1,48 @@
+version: "3.8"
+
+services:
+  db:
+    image: mysql:8.0
+    container_name: podcast_mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: podcast_db
+      MYSQL_USER: podcast_user
+      MYSQL_PASSWORD: 123456789
+    ports:
+      - "5306:3306"
+    volumes:
+      - podcast_db_data:/var/lib/mysql
+    networks:
+      - podcast_net
+
+  app:
+    container_name: podcast_server
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8081:8080"
+    depends_on:
+      - db
+    environment:
+      DOCKER_ENV: "true"
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_USER: podcast_user
+      DB_PASSWORD: 123456789
+      DB_NAME: podcast_db
+      JWT_SECRET: super_secret_123456
+      SUPABASE_URL: https://ejfdickbdcvgsgsawgvm.supabase.co
+      SUPABASE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVqZmRpY2tiZGN2Z3Nnc2F3Z3ZtIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc0ODM3MDQyMiwiZXhwIjoyMDYzOTQ2NDIyfQ.XpZXj5AfTa_lON_lC5EHhiXN-fsIUgM-upMgA1_OqhA
+      GEMINI_API_KEY: AIzaSyCeGZiWJ6_Ynysbwt5-32VRStPTGs1Iwyw
+      API_BASE_URL: https://podcastserver-production.up.railway.app
+      GOOGLE_APPLICATION_CREDENTIALS: /root/credentials/google-credentials.json
+    networks:
+      - podcast_net
+
+volumes:
+  podcast_db_data: {}
+
+networks:
+  podcast_net:

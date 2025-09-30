@@ -1,0 +1,28 @@
+# Thiết lập kết thúc dòng chuẩn (dành cho hệ điều hành khác nhau)
+*.go     text eol=lf
+*.mod    text eol=lf
+*.sum    text eol=lf
+*.sh     text eol=lf
+*.env    text eol=lf
+*.sql    text eol=lf
+Dockerfile text eol=lf
+
+# Xác định file nhị phân - không diff
+*.png    binary
+*.jpg    binary
+*.jpeg   binary
+*.gif    binary
+*.svg    binary
+*.mp3    binary
+*.mp4    binary
+*.mov    binary
+
+# Loại bỏ khi tạo release ZIP (GitHub Releases)
+.env            export-ignore
+docker-compose.override.yml export-ignore
+README.local.md export-ignore
+
+# GitHub Linguist override (nếu có file .sql, .sh nhiều)
+*.go            linguist-language=Go
+*.sql           linguist-language=SQL
+*.sh            linguist-language=Shell
