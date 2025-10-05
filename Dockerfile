@@ -43,7 +43,9 @@ RUN go mod download
 COPY . .
 
 # Build binary (file main.go ở thư mục gốc)
-RUN go build -o main .
+#RUN go build -o main .
+RUN go build -o main ./server
+
 
 
 # -----------------------
