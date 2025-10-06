@@ -44,7 +44,7 @@ COPY . .
 
 # Build binary (file main.go ở thư mục gốc)
 #RUN go build -o main .
-RUN go build -o main ./main
+RUN go build -o main .
 
 
 
