@@ -63,7 +63,7 @@ COPY --from=builder /app/main .
 COPY --from=builder /app/wait-for-it.sh /wait-for-it.sh
 
 # Quyền thực thi
-RUN chmod +x /wait-for-it.sh ./main
+RUN chmod +x /wait-for-it.sh ./cmd
 
 EXPOSE 8080
 
