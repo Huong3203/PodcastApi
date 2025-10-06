@@ -44,7 +44,7 @@ COPY . .
 
 # Build binary (file main.go ở thư mục gốc)
 #RUN go build -o main .
-RUN go build -o main ./server
+RUN go build -o main ./main
 
 
 
@@ -63,7 +63,7 @@ COPY --from=builder /app/main .
 COPY --from=builder /app/wait-for-it.sh /wait-for-it.sh
 
 # Quyền thực thi
-RUN chmod +x /wait-for-it.sh ./cmd
+RUN chmod +x /wait-for-it.sh ./main
 
 EXPOSE 8080
 
