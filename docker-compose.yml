@@ -27,11 +27,11 @@ services:
       - db
     environment:
       DOCKER_ENV: "true"
-      DB_HOST: db
-      DB_PORT: 3306
-      DB_USER: podcast_user
-      DB_PASSWORD: 123456789
-      DB_NAME: podcast_db
+      DB_HOST: trolley.proxy.rlwy.net
+      DB_PORT: 53938
+      DB_USER: root
+      DB_PASSWORD: JmvcmOdpbKIXqZAbBhzPkfWGLqHeospE
+      DB_NAME: railway
       JWT_SECRET: super_secret_123456
       SUPABASE_URL: https://iyqehfbrqwwofajeyudh.supabase.co
       SUPABASE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml5cWVoZmJycXd3b2ZhamV5dWRoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkyNTE3NDksImV4cCI6MjA3NDgyNzc0OX0.XJry21DBi73i9FCXeYnLZsv-bE5gJJs4qKM_Q-lnZII
