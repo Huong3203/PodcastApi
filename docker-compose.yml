@@ -34,7 +34,7 @@ services:
       DB_NAME: railway
       JWT_SECRET: super_secret_123456
       SUPABASE_URL: https://iyqehfbrqwwofajeyudh.supabase.co
-      SUPABASE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml5cWVoZmJycXd3b2ZhamV5dWRoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkyNTE3NDksImV4cCI6MjA3NDgyNzc0OX0.XJry21DBi73i9FCXeYnLZsv-bE5gJJs4qKM_Q-lnZII
+      SUPABASE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml5cWVoZmJycXd3b2ZhamV5dWRoIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1OTI1MTc0OSwiZXhwIjoyMDc0ODI3NzQ5fQ.9fAGIjuG2jm0-Bgm1F3GnYqafKx7bjW2N04PFI0Y2TI
       GEMINI_API_KEY: AIzaSyBPwEkJdL3a4ewXFq8VlwyQMk0LpTVkS2o
       API_BASE_URL: https://apipodcastt.onrender.com
       GOOGLE_APPLICATION_CREDENTIALS: /root/credentials/google-credentials.json
