@@ -39,7 +39,21 @@ services:
 
       GEMINI_API_KEY: AIzaSyBPwEkJdL3a4ewXFq8VlwyQMk0LpTVkS2o
       API_BASE_URL: https://apipodcastt.onrender.com
-      GOOGLE_APPLICATION_CREDENTIALS: /root/credentials/google-credentials.json
+      #GOOGLE_APPLICATION_CREDENTIALS: /root/credentials/google-credentials.json
+      GOOGLE_APPLICATION_CREDENTIALS: |
+        {
+          "type": "service_account",
+          "project_id": "after-yesterday-474520-r1",
+          "private_key_id": "8889a89b460f621b161d03e864300b1c25bab953",
+          "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCvTTCb0Bhvgb4V\ncIsBTO365Hxc57lrUMFd/8UQYwr4krdvI/bGwEe8rWCqjfBLrOZ2ISsZNvT5rwL9\n/2/7tmlrAL8gvKyqa5SS4An/axbXZO2LcbqD6NdvR9/CiVSyQsEkVcVmcv7G/sZW\nz73P48I8jtOrYmdDNvKC9WzuXjeRix1P7edVCB198BLbV6GnEaYEg25C8jZ2kF35\n4RRQX97s5sUrE7rusGilQlKiDXcDaxjHtA/SGKxsPvy48e4RaJCwQBI1EP4ElyMj\nDpIvJNywKEWH/ITiOQJwWBBJlApIVCVNjJZoRPOPbXWbMESFZH4mzZc9syNKJQY7\nglIR+nk5AgMBAAECggEAC+paoZqmUI0AdT9cOXNH0UgO0ndPPYXEkP25wLyEskLx\nvDiU9Ws8LQ1ZXtptQQ2QcCrevbTkN6T/VnGyhEjgtzzaoPBmKaLMm2OmVlHKgItM\nELCDKaRt4VLguR3Bz6iVLYG1fFpYakEGzP+Lornz2c8pANMcWv+dAg0J0ZV+oDI4\nNT1OCCqc7KYs1223vx5dSdCM2OEpTFJq0EJMYRu/UZ5behDOkEDxmrAt7T8/ohs+\ny4ZWthj58PKkugJc+iMAxJsxEsddalI/h9Qv810oabhEk6NyxcAdx7uXANpL/JWP\nzLeAbyOxk6/gLtQOO36gKqnJxs/mQzx4Gq/w/e2tgQKBgQDpgrpk3gkqpHC4B51H\nkkNKbGa5mX7aGwZxVuCinWhpymn3IWYnzgObAb/5OqvZKj1QUWLSFWgPpHh7VXgF\ndwZaIrJR1hRR5vjXefOdOaRKKs2spjrsKf0o/j6vrW8Fsxfn/VYXUhxXW6Dg0qOz\nIrKH1aNp7Lt3GlDdAdsB5LnEgQKBgQDAL0yJLt84iy0/Vjw0uMzPvegn7QpFCJek\n8v3Dj5oY4le7dVmp2lcrUaTAdpQskKOigM/fnV+LPD6asdJszxyst0rcwULuPJlI\nYzuY4nH7JFRo1E6ktkHsxzIYxUZSp0Ni+ZroErmIbtJmcBPEE7EGtwBUQnuFtDch\ndxWp6B94uQKBgQC5RU3ahgjD2qDMgs4ZYUUeoY+Hpu/s4RBlkMa+fyG+/ijBObCx\n2FUoAWVtu01qCoeHWGuNwApGjvpA8Pk/bMaPcYQGRlLtANNjM5FEp91gM0HowCN0\nCYShp8fY30R9QzGukWRjMHToIv0sJDRaByebergjbP74atrJ35UClZWHAQKBgDlI\nX9mr3ODvqubr/zn/sxxgkGgGIT9+ViTWQIkfrmCoZln7mmQkLkM9LIwpS/UUj5GK\nL2uJbscDh+13/y5rdTKN14SBHkAAU/fdjA//vtWKeJZeYap6oJ/Ap8/2TQWp0U4Y\n8/EkU6S004Ww9lNFQ0irFzAGOOcbVitlYVGpXGgRAoGAKw01puNlQZ26tcWaSNJf\nb9qMsrLLX8Vs59DH24b9trYQrqTKTj4bDT4wW0zCSVMeb4j8eWTfZa/FoBVph4FU\nLFUWWtIBRBJjX3JjLjjenhx6z5bqLIXpt2qhbGJdbO8AKavHtxp5/o5GKVuSUwms\nGrZJOXRtOxlXVhZTrD4ht+s=\n-----END PRIVATE KEY-----\n",
+          "client_email": "text-to-speech-service@after-yesterday-474520-r1.iam.gserviceaccount.com",
+          "client_id": "107033799755519140031",
+          "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+          "token_uri": "https://oauth2.googleapis.com/token",
+          "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+          "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/text-to-speech-service%40after-yesterday-474520-r1.iam.gserviceaccount.com",
+          "universe_domain": "googleapis.com"
+        }
     networks:
       - podcast_net
 
