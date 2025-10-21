@@ -16,7 +16,7 @@ import (
 // ================== PUBLIC (Không cần đăng nhập) ==================
 //
 
-// ✅ Public: Lấy danh sách danh mục (phân trang, tìm kiếm, lọc trạng thái)
+// ✅ Public: Lấy danh sách danh mục (phân trang, tìm kiếm, chỉ active)
 func GetDanhMucs(c *gin.Context) {
 	var danhMucs []models.DanhMuc
 	var total int64
@@ -26,34 +26,15 @@ func GetDanhMucs(c *gin.Context) {
 	offset := (page - 1) * limit
 
 	search := c.Query("search")
-	status := c.Query("status")
 
-	query := config.DB.Model(&models.DanhMuc{})
-
-	// Lấy vai trò từ middleware (nếu có)
-	role, _ := c.Get("vai_tro")
-
-	// ✅ Người dùng thường chỉ thấy danh mục được kích hoạt
-	if role != "admin" {
-		query = query.Where("kich_hoat = ?", true)
-	}
+	query := config.DB.Model(&models.DanhMuc{}).Where("kich_hoat = ?", true) // chỉ active
 
 	if search != "" {
 		query = query.Where("LOWER(ten_danh_muc) LIKE ?", "%"+strings.ToLower(search)+"%")
 	}
 
-	// ✅ Admin mới được lọc theo trạng thái
-	if status != "" && role == "admin" {
-		switch strings.ToLower(status) {
-		case "true":
-			query = query.Where("kich_hoat = ?", true)
-		case "false":
-			query = query.Where("kich_hoat = ?", false)
-		}
-	}
-
 	query.Count(&total)
-	query.Offset(offset).Limit(limit).Order("created_at DESC").Find(&danhMucs)
+	query.Offset(offset).Limit(limit).Order("ngay_tao DESC").Find(&danhMucs) // sửa thành ngay_tao
 
 	c.JSON(http.StatusOK, gin.H{
 		"data": danhMucs,
@@ -64,6 +45,26 @@ func GetDanhMucs(c *gin.Context) {
 			"total_pages": int((total + int64(limit) - 1) / int64(limit)),
 		},
 	})
+}
+
+// ✅ Xem chi tiết danh mục
+func GetDanhMucByID(c *gin.Context) {
+	role, _ := c.Get("vai_tro")
+
+	id := c.Param("id")
+	var danhMuc models.DanhMuc
+	if err := config.DB.First(&danhMuc, "id = ?", id).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy danh mục"})
+		return
+	}
+
+	// Người dùng thường chỉ xem được danh mục đã kích hoạt
+	if role != "admin" && !danhMuc.KichHoat {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Danh mục này chưa được kích hoạt"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": danhMuc})
 }
 
 //
@@ -87,11 +88,10 @@ func CreateDanhMuc(c *gin.Context) {
 		return
 	}
 
-	slugStr := slug.Make(input.TenDanhMuc)
 	danhMuc := models.DanhMuc{
 		ID:         uuid.New().String(),
 		TenDanhMuc: input.TenDanhMuc,
-		Slug:       slugStr,
+		Slug:       slug.Make(input.TenDanhMuc),
 		MoTa:       input.MoTa,
 		KichHoat:   true,
 	}
@@ -172,24 +172,4 @@ func ToggleDanhMucStatus(c *gin.Context) {
 		"message": "Cập nhật trạng thái thành công",
 		"data":    dm,
 	})
-}
-
-// ✅ Xem chi tiết danh mục
-func GetDanhMucByID(c *gin.Context) {
-	role, _ := c.Get("vai_tro")
-
-	id := c.Param("id")
-	var danhMuc models.DanhMuc
-	if err := config.DB.First(&danhMuc, "id = ?", id).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy danh mục"})
-		return
-	}
-
-	// Người dùng thường chỉ xem được danh mục đã kích hoạt
-	if role != "admin" && !danhMuc.KichHoat {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Danh mục này chưa được kích hoạt"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"data": danhMuc})
 }
