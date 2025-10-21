@@ -10,17 +10,19 @@ import (
 
 func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 	r.GET("/ping", func(c *gin.Context) {
-		c.JSON(200, gin.H{
-			"message": "pong",
-		})
+		c.JSON(200, gin.H{"message": "pong"})
 	})
+
 	api := r.Group("/api")
 
+	// ---------------- AUTH ----------------
 	auth := api.Group("/auth")
 	{
 		auth.POST("/register", controllers.Register)
 		auth.POST("/login", controllers.Login)
 	}
+
+	// ---------------- USER ----------------
 	user := api.Group("/users")
 	{
 		user.Use(middleware.AuthMiddleware())
@@ -29,16 +31,17 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 		user.POST("/change-password", controllers.ChangePassword)
 	}
 
+	// ---------------- ADMIN ----------------
 	admin := api.Group("/admin")
-
 	{
-		admin.Use(middleware.AuthMiddleware(), middleware.DBMiddleware(db)) // ✅ inject db cho nhóm admin
+		admin.Use(middleware.AuthMiddleware(), middleware.DBMiddleware(db)) // ✅ cần đăng nhập & inject DB
 		admin.POST("/documents/upload", controllers.UploadDocument)
 		admin.GET("/documents", controllers.ListDocumentStatus)
 		admin.POST("/podcasts", controllers.CreatePodcastWithUpload)
 		admin.PUT("/podcasts/:id", controllers.UpdatePodcast)
 	}
 
+	// ---------------- CATEGORY ----------------
 	category := api.Group("/categories")
 	{
 		category.Use(middleware.AuthMiddleware())
@@ -48,19 +51,26 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 		category.PUT("/:id", controllers.UpdateDanhMuc)
 		category.PUT("/:id/status", controllers.ToggleDanhMucStatus)
 	}
-	podcast := api.Group("/podcasts")
-	{
-		podcast.Use(middleware.AuthMiddleware())
-		podcast.GET("/", controllers.GetPodcast)
-		podcast.GET("/search", controllers.SearchPodcast) // Thêm dòng này
-		podcast.GET("/:id", controllers.GetPodcastByID)
-	}
-	// Thêm các route khác tại đây
-	r.GET("/health", controllers.HealthCheck)
 
+	// ---------------- PODCAST ----------------
+	// ❌ Nhóm public – không cần đăng nhập
+	publicPodcast := api.Group("/podcasts")
+	{
+		publicPodcast.GET("/", controllers.GetPodcast)          // xem danh sách podcast
+		publicPodcast.GET("/search", controllers.SearchPodcast) // tìm kiếm
+		publicPodcast.GET("/:id", controllers.GetPodcastByID)   // xem chi tiết
+	}
+
+	// ✅ Nhóm protected – cần đăng nhập (nếu muốn cho user upload/sửa/xóa riêng)
+	protectedPodcast := api.Group("/podcasts")
+	{
+		protectedPodcast.Use(middleware.AuthMiddleware())
+		protectedPodcast.POST("/", controllers.CreatePodcastWithUpload)
+		protectedPodcast.PUT("/:id", controllers.UpdatePodcast)
+	}
+
+	// ---------------- OTHER ----------------
+	r.GET("/health", controllers.HealthCheck)
 	r.GET("/ws/document/:id", ws.HandleDocumentWebSocket)
 	r.GET("/ws/status", ws.HandleGlobalWebSocket)
-
-	// Thêm route thực tế tại đây
-
 }

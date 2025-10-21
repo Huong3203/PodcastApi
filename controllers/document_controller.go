@@ -18,9 +18,16 @@ import (
 	"gorm.io/gorm"
 )
 
+// ================== ADMIN / UPLOAD DOCUMENT (YÊU CẦU ĐĂNG NHẬP) ==================
 func UploadDocument(c *gin.Context) {
 	db := c.MustGet("db").(*gorm.DB)
 	userID := c.GetString("user_id")
+
+	// ✅ BẮT BUỘC ĐĂNG NHẬP
+	if userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Vui lòng đăng nhập để tải lên tài liệu"})
+		return
+	}
 
 	file, err := c.FormFile("file")
 	if err != nil {
@@ -53,21 +60,22 @@ func UploadDocument(c *gin.Context) {
 		ID:            id,
 		TenFileGoc:    file.Filename,
 		DuongDanFile:  publicURL,
-		LoaiFile:      ext[1:], // loại bỏ dấu chấm
+		LoaiFile:      strings.TrimPrefix(ext, "."),
 		KichThuocFile: file.Size,
 		TrangThai:     "Đã tải lên",
 		NguoiTaiLen:   userID,
 	}
+
 	if err := db.Create(&doc).Error; err != nil {
 		ws.SendStatusUpdate(id, "Không thể lưu tài liệu vào database", 0, err.Error())
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không lưu được tài liệu", "details": err.Error()})
 		return
 	}
+
 	ws.SendStatusUpdate(id, "Đã tải lên", 10, "")
 	ws.BroadcastDocumentListChanged()
 
 	ws.SendStatusUpdate(id, "Đang trích xuất nội dung...", 20, "")
-
 	noiDung, err := services.NormalizeInput(services.InputSource{
 		Type:       inputType,
 		FileHeader: file,
@@ -86,8 +94,7 @@ func UploadDocument(c *gin.Context) {
 		return
 	}
 
-	// Log nội dung đã làm sạch
-	fmt.Println("Nội dung đã làm sạch: ", cleanedContent)
+	fmt.Println("Nội dung đã làm sạch:", cleanedContent)
 
 	db.Model(&doc).Updates(map[string]interface{}{
 		"TrangThai":        "Đã trích xuất",
@@ -97,8 +104,6 @@ func UploadDocument(c *gin.Context) {
 	ws.BroadcastDocumentListChanged()
 
 	ws.SendStatusUpdate(id, "Đang tạo audio...", 50, "")
-
-	// Lấy voice & rate
 	voice := c.PostForm("voice")
 	if voice == "" {
 		voice = "vi-VN-Chirp3-HD-Puck"
@@ -132,10 +137,7 @@ func UploadDocument(c *gin.Context) {
 		"NgayXuLyXong": &now,
 	})
 
-	ws.SendStatusUpdate(id, "Đang lưu tài liệu...", 80, "")
 	ws.SendStatusUpdate(id, "Hoàn thành", 100, "")
-
-	// Khi xử lý xong tài liệu, gọi:
 	ws.BroadcastDocumentListChanged()
 
 	db.Preload("NguoiDung").First(&doc, "id = ?", doc.ID)
@@ -146,7 +148,10 @@ func UploadDocument(c *gin.Context) {
 	})
 }
 
-// GET /api/admin/documents
+//
+// ================== PUBLIC / XEM DANH SÁCH PODCAST (KHÔNG CẦN ĐĂNG NHẬP) ==================
+//
+
 type TaiLieuStatusDTO struct {
 	ID         string `json:"id"`
 	TenFileGoc string `json:"ten_file_goc"`
@@ -159,12 +164,10 @@ func ListDocumentStatus(c *gin.Context) {
 	var result []TaiLieuStatusDTO
 	var total int64
 
-	// Phân trang
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
 	offset := (page - 1) * limit
 
-	// Tìm kiếm theo tên file
 	search := c.Query("search")
 	query := config.DB.Model(&models.TaiLieu{})
 
@@ -172,16 +175,16 @@ func ListDocumentStatus(c *gin.Context) {
 		query = query.Where("LOWER(ten_file_goc) LIKE ?", "%"+strings.ToLower(search)+"%")
 	}
 
-	// Đếm tổng
+	// ✅ CHỈ LẤY NHỮNG TÀI LIỆU HOÀN THÀNH (CÔNG KHAI)
+	query = query.Where("trang_thai = ?", "Hoàn thành")
+
 	query.Count(&total)
 
-	// Lấy dữ liệu
 	if err := query.Offset(offset).Limit(limit).Order("ngay_tai_len desc").Find(&taiLieus).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể lấy danh sách tài liệu", "details": err.Error()})
 		return
 	}
 
-	// Rút gọn kết quả
 	for _, doc := range taiLieus {
 		result = append(result, TaiLieuStatusDTO{
 			ID:         doc.ID,
@@ -191,7 +194,6 @@ func ListDocumentStatus(c *gin.Context) {
 		})
 	}
 
-	// Trả về JSON
 	c.JSON(http.StatusOK, gin.H{
 		"data": result,
 		"pagination": gin.H{

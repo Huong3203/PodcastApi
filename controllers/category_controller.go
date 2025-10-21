@@ -12,33 +12,39 @@ import (
 	"github.com/gosimple/slug"
 )
 
-// đây là controller để trả về danh sách danh mục: phân trang, tìm kiếm, lọc trạng thái,
+//
+// ================== PUBLIC (Không cần đăng nhập) ==================
+//
+
+// ✅ Public: Lấy danh sách danh mục (phân trang, tìm kiếm, lọc trạng thái)
 func GetDanhMucs(c *gin.Context) {
 	var danhMucs []models.DanhMuc
 	var total int64
 
-	// Phân trang
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
 	offset := (page - 1) * limit
 
-	// Tìm kiếm & lọc
 	search := c.Query("search")
-	status := c.Query("status") // "true"/"false"
+	status := c.Query("status")
 
 	query := config.DB.Model(&models.DanhMuc{})
 
-	// Lấy role từ context (giao sử đã có middleware đã set)
+	// Lấy vai trò từ middleware (nếu có)
 	role, _ := c.Get("vai_tro")
+
+	// ✅ Người dùng thường chỉ thấy danh mục được kích hoạt
 	if role != "admin" {
-		query = query.Where("kich_hoat = ?", true) // chỉ lấy danh mục đã kích hoạt
+		query = query.Where("kich_hoat = ?", true)
 	}
 
 	if search != "" {
 		query = query.Where("LOWER(ten_danh_muc) LIKE ?", "%"+strings.ToLower(search)+"%")
 	}
+
+	// ✅ Admin mới được lọc theo trạng thái
 	if status != "" && role == "admin" {
-		switch status {
+		switch strings.ToLower(status) {
 		case "true":
 			query = query.Where("kich_hoat = ?", true)
 		case "false":
@@ -46,11 +52,8 @@ func GetDanhMucs(c *gin.Context) {
 		}
 	}
 
-	// Đếm tổng bản ghi
 	query.Count(&total)
-
-	// Lấy dữ liệu
-	query.Offset(offset).Limit(limit).Find(&danhMucs)
+	query.Offset(offset).Limit(limit).Order("created_at DESC").Find(&danhMucs)
 
 	c.JSON(http.StatusOK, gin.H{
 		"data": danhMucs,
@@ -63,46 +66,24 @@ func GetDanhMucs(c *gin.Context) {
 	})
 }
 
-func ToggleDanhMucStatus(c *gin.Context) {
-	role, _ := c.Get("vai_tro")
-	if role != "admin" {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Bạn không có quyền thực hiện hành động này"})
-		return
-	}
-	id := c.Param("id")
-	var body struct {
-		KichHoat bool `json:"kich_hoat"`
-	}
+//
+// ================== ADMIN (Cần đăng nhập + role = admin) ==================
+//
 
-	if err := c.ShouldBindJSON(&body); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Body không hợp lệ"})
-		return
-	}
-
-	var dm models.DanhMuc
-	if err := config.DB.First(&dm, "id = ?", id).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy danh mục"})
-		return
-	}
-
-	dm.KichHoat = body.KichHoat
-	config.DB.Save(&dm)
-
-	c.JSON(http.StatusOK, gin.H{"message": "Cập nhật trạng thái thành công", "data": dm})
-}
-
+// ✅ Tạo danh mục mới
 func CreateDanhMuc(c *gin.Context) {
 	if role, _ := c.Get("vai_tro"); role != "admin" {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Bạn không có quyền thực hiện hành động này"})
+		c.JSON(http.StatusForbidden, gin.H{"error": "Bạn không có quyền tạo danh mục"})
 		return
 	}
+
 	var input struct {
 		TenDanhMuc string `json:"ten_danh_muc" binding:"required"`
 		MoTa       string `json:"mo_ta"`
 	}
 
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Body không hợp lệ"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Dữ liệu không hợp lệ"})
 		return
 	}
 
@@ -120,21 +101,26 @@ func CreateDanhMuc(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{"message": "Tạo danh mục thành công", "data": danhMuc})
+	c.JSON(http.StatusCreated, gin.H{
+		"message": "Tạo danh mục thành công",
+		"data":    danhMuc,
+	})
 }
 
+// ✅ Cập nhật danh mục
 func UpdateDanhMuc(c *gin.Context) {
 	if role, _ := c.Get("vai_tro"); role != "admin" {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Bạn không có quyền thực hiện hành động này"})
+		c.JSON(http.StatusForbidden, gin.H{"error": "Bạn không có quyền cập nhật danh mục"})
 		return
 	}
+
 	var input struct {
 		TenDanhMuc string `json:"ten_danh_muc" binding:"required"`
 		MoTa       string `json:"mo_ta"`
 	}
 
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Body không hợp lệ"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Dữ liệu không hợp lệ"})
 		return
 	}
 
@@ -150,19 +136,58 @@ func UpdateDanhMuc(c *gin.Context) {
 	danhMuc.Slug = slug.Make(input.TenDanhMuc)
 	config.DB.Save(&danhMuc)
 
-	c.JSON(http.StatusOK, gin.H{"message": "Cập nhật danh mục thành công", "data": danhMuc})
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Cập nhật danh mục thành công",
+		"data":    danhMuc,
+	})
 }
 
-func GetDanhMucByID(c *gin.Context) {
+// ✅ Bật / Tắt danh mục
+func ToggleDanhMucStatus(c *gin.Context) {
 	if role, _ := c.Get("vai_tro"); role != "admin" {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Bạn không có quyền thực hiện hành động này"})
+		c.JSON(http.StatusForbidden, gin.H{"error": "Bạn không có quyền thay đổi trạng thái danh mục"})
 		return
 	}
+
+	id := c.Param("id")
+	var body struct {
+		KichHoat bool `json:"kich_hoat"`
+	}
+
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Dữ liệu không hợp lệ"})
+		return
+	}
+
+	var dm models.DanhMuc
+	if err := config.DB.First(&dm, "id = ?", id).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy danh mục"})
+		return
+	}
+
+	dm.KichHoat = body.KichHoat
+	config.DB.Save(&dm)
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Cập nhật trạng thái thành công",
+		"data":    dm,
+	})
+}
+
+// ✅ Xem chi tiết danh mục
+func GetDanhMucByID(c *gin.Context) {
+	role, _ := c.Get("vai_tro")
+
 	id := c.Param("id")
 	var danhMuc models.DanhMuc
-
 	if err := config.DB.First(&danhMuc, "id = ?", id).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy danh mục"})
+		return
+	}
+
+	// Người dùng thường chỉ xem được danh mục đã kích hoạt
+	if role != "admin" && !danhMuc.KichHoat {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Danh mục này chưa được kích hoạt"})
 		return
 	}
 
