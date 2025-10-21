@@ -44,12 +44,18 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 	// ---------------- CATEGORY ----------------
 	category := api.Group("/categories")
 	{
-		category.Use(middleware.AuthMiddleware())
+		// === PUBLIC ===
 		category.GET("/", controllers.GetDanhMucs)
 		category.GET("/:id", controllers.GetDanhMucByID)
-		category.POST("/", controllers.CreateDanhMuc)
-		category.PUT("/:id", controllers.UpdateDanhMuc)
-		category.PUT("/:id/status", controllers.ToggleDanhMucStatus)
+
+		// === ADMIN ===
+		adminCategory := category.Group("/")
+		adminCategory.Use(middleware.AuthMiddleware())
+		{
+			adminCategory.POST("/", controllers.CreateDanhMuc)
+			adminCategory.PUT("/:id", controllers.UpdateDanhMuc)
+			adminCategory.PATCH("/:id/status", controllers.ToggleDanhMucStatus)
+		}
 	}
 
 	// ---------------- PODCAST ----------------
