@@ -26,7 +26,10 @@ func main() {
 
 	// ✅ Bổ sung cấu hình CORS
 	r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:5174"}, // 👈 Thay bằng domain frontend thật
+		AllowOrigins: []string{
+			"http://localhost:5173",            // ✅ React local
+			"https://your-frontend-domain.com", // ✅ nếu bạn có deploy
+		},
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
 		ExposeHeaders:    []string{"Content-Length"},
