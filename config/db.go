@@ -32,7 +32,7 @@ func ConnectDB() {
 
 	// ✅ DSN chuẩn PostgreSQL cho Render
 	dsn := fmt.Sprintf(
-		"host=%s user=%s password=%s dbname=%s port=%s sslmode=require TimeZone=Asia/Bangkok",
+		"host=%s user=%s password=%s dbname=%s port=%s sslmode=require TimeZone=UTC",
 		host, user, password, dbname, port,
 	)
 
