@@ -1,3 +1,5 @@
+package config
+
 import (
 	"fmt"
 	"log"
@@ -40,7 +42,7 @@ func ConnectDB() {
 		&models.TaiLieu{},
 		&models.Podcast{},
 		&models.DanhMuc{},
-		&models.DanhGia{}, // nếu bạn có bảng rating
+		&models.DanhGia{},
 	)
 	if err != nil {
 		log.Fatal("❌ Auto migration failed:", err)
