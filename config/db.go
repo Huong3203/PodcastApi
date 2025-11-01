@@ -14,29 +14,36 @@ import (
 
 var DB *gorm.DB
 
+// Load biến môi trường từ file .env
 func LoadEnv() {
-	err := godotenv.Load()
-	if err != nil {
-		log.Fatal("❌ Load .env failed")
+	if err := godotenv.Load(); err != nil {
+		log.Println("⚠️  Không tìm thấy file .env, dùng biến môi trường hệ thống.")
 	}
 }
 
 func ConnectDB() {
-	dsn := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=require",
-		os.Getenv("DB_USER"),
-		os.Getenv("DB_PASSWORD"),
-		os.Getenv("DB_HOST"),
-		os.Getenv("DB_PORT"),
-		os.Getenv("DB_NAME"),
+	LoadEnv()
+
+	host := os.Getenv("DB_HOST")
+	port := os.Getenv("DB_PORT")
+	user := os.Getenv("DB_USER")
+	password := os.Getenv("DB_PASSWORD")
+	dbname := os.Getenv("DB_NAME")
+
+	// ✅ DSN chuẩn PostgreSQL cho Render
+	dsn := fmt.Sprintf(
+		"host=%s user=%s password=%s dbname=%s port=%s sslmode=require TimeZone=Asia/Ho_Chi_Minh",
+		host, user, password, dbname, port,
 	)
 
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
-		log.Fatal("❌ Failed to connect DB:", err)
+		log.Fatalf("❌ Kết nối cơ sở dữ liệu thất bại: %v", err)
 	}
+
 	DB = db
 
-	// ✅ Auto migrate các bảng
+	// ✅ Tự động migrate các model
 	err = DB.AutoMigrate(
 		&models.NguoiDung{},
 		&models.TaiLieu{},
@@ -45,15 +52,15 @@ func ConnectDB() {
 		&models.DanhGia{},
 	)
 	if err != nil {
-		log.Fatal("❌ Auto migration failed:", err)
+		log.Fatalf("❌ Auto migration thất bại: %v", err)
 	}
 
-	fmt.Println("✅ Connected to PostgreSQL DB and Migrated!")
+	fmt.Println("✅ Đã kết nối PostgreSQL & migrate thành công!")
 
-	// Connection pool
+	// ✅ Cấu hình connection pool
 	sqlDB, err := db.DB()
 	if err != nil {
-		log.Fatalf("Không thể lấy đối tượng database: %v", err)
+		log.Fatalf("❌ Không thể lấy đối tượng *sql.DB: %v", err)
 	}
 
 	sqlDB.SetMaxIdleConns(10)
