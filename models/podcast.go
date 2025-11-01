@@ -1,6 +1,8 @@
 package models
 
-import "time"
+import (
+	"time"
+)
 
 type Podcast struct {
 	ID             string     `gorm:"type:char(36);primaryKey" json:"id"`
@@ -11,14 +13,13 @@ type Podcast struct {
 	ThoiLuongGiay  int        `gorm:"type:int" json:"thoi_luong_giay"`
 	HinhAnhDaiDien string     `gorm:"type:text" json:"hinh_anh_dai_dien"`
 	DanhMucID      string     `gorm:"type:char(36);not null" json:"danh_muc_id"`
-	TrangThai      string     `gorm:"type:varchar(10);default:'Tắt';check:trang_thai IN ('Tắt','Bật')" json:"trang_thai"`
+	TrangThai      string     `gorm:"type:enum('Tắt','Bật'); default:'Tắt'" json:"trang_thai"`
 	NguoiTao       string     `gorm:"type:char(36);not null" json:"nguoi_tao"`
 	NgayTaoRa      time.Time  `gorm:"autoCreateTime" json:"ngay_tao_ra"`
-	NgayXuatBan    *time.Time `json:"ngay_xuat_ban"`
+	NgayXuatBan    *time.Time `gorm:"" json:"ngay_xuat_ban"`
 	TheTag         string     `gorm:"type:varchar(255)" json:"the_tag"`
 	LuotXem        int        `gorm:"type:int;default:0" json:"luot_xem"`
-
-	// Khóa ngoại
+	// Định nghĩa khóa ngoại
 	TaiLieu TaiLieu `gorm:"foreignKey:TailieuID;references:ID" json:"tailieu"`
 	DanhMuc DanhMuc `gorm:"foreignKey:DanhMucID;references:ID" json:"danhmuc"`
 }
