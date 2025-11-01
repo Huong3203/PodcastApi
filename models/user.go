@@ -10,6 +10,7 @@ type NguoiDung struct {
 	MatKhau  string    `gorm:"type:varchar(255);not null" json:"-"`
 	HoTen    string    `gorm:"type:varchar(100)" json:"ho_ten"`
 	VaiTro   string    `gorm:"type:enum('admin', 'user');default:'user'" json:"vai_tro"`
+	Avatar   string    `gorm:"type:varchar(255);default:''" json:"avatar"` // ✅ avatar
 	NgayTao  time.Time `gorm:"autoCreateTime" json:"ngay_tao"`
 	KichHoat bool      `gorm:"default:true" json:"kich_hoat"`
 }

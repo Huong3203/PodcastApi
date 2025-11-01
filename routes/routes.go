@@ -34,22 +34,26 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 	// ---------------- ADMIN ----------------
 	admin := api.Group("/admin")
 	{
-		admin.Use(middleware.AuthMiddleware(), middleware.DBMiddleware(db)) // ✅ cần đăng nhập & inject DB
+		admin.Use(middleware.AuthMiddleware(), middleware.DBMiddleware(db))
 		admin.POST("/documents/upload", controllers.UploadDocument)
 		admin.GET("/documents", controllers.ListDocumentStatus)
 		admin.POST("/podcasts", controllers.CreatePodcastWithUpload)
 		admin.PUT("/podcasts/:id", controllers.UpdatePodcast)
 		admin.GET("/stats", controllers.GetAdminStats)
+
+		// === Ratings stats cho admin ===
+		admin.GET("/ratings/stats", controllers.GetAdminRatingsStats)
+
+		// === Lấy tất cả user (chỉ admin) ===
+		admin.GET("/users", controllers.GetAllUsers)
 	}
 
 	// ---------------- CATEGORY ----------------
 	category := api.Group("/categories")
 	{
-		// === PUBLIC ===
 		category.GET("/", controllers.GetDanhMucs)
 		category.GET("/:id", controllers.GetDanhMucByID)
 
-		// === ADMIN ===
 		adminCategory := category.Group("/")
 		adminCategory.Use(middleware.AuthMiddleware())
 		{
@@ -60,20 +64,24 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 	}
 
 	// ---------------- PODCAST ----------------
-	// ❌ Nhóm public – không cần đăng nhập
 	publicPodcast := api.Group("/podcasts")
 	{
-		publicPodcast.GET("/", controllers.GetPodcast)          // xem danh sách podcast
-		publicPodcast.GET("/search", controllers.SearchPodcast) // tìm kiếm
-		publicPodcast.GET("/:id", controllers.GetPodcastByID)   // xem chi tiết
+		publicPodcast.GET("/", controllers.GetPodcast)
+		publicPodcast.GET("/search", controllers.SearchPodcast)
+		publicPodcast.GET("/:id", controllers.GetPodcastByID)
+
+		// === Ratings public ===
+		publicPodcast.GET("/:id/ratings", controllers.GetPodcastRatings)
 	}
 
-	// ✅ Nhóm protected – cần đăng nhập (nếu muốn cho user upload/sửa/xóa riêng)
 	protectedPodcast := api.Group("/podcasts")
 	{
 		protectedPodcast.Use(middleware.AuthMiddleware())
 		protectedPodcast.POST("/", controllers.CreatePodcastWithUpload)
 		protectedPodcast.PUT("/:id", controllers.UpdatePodcast)
+
+		// === Thêm đánh giá (cần login) ===
+		protectedPodcast.POST("/:id/ratings", controllers.AddPodcastRating)
 	}
 
 	// ---------------- OTHER ----------------

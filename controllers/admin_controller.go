@@ -38,7 +38,7 @@ func GetAdminStats(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể tính tổng lượt xem"})
 		return
 	}
-
+	//test mới
 	// Đếm trạng thái tài liệu
 	var processingCount, completedCount int64
 	db.Model(&models.TaiLieu{}).Where("trang_thai = ?", "Đã tải lên").Count(&processingCount)
