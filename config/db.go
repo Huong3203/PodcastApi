@@ -43,10 +43,13 @@ func ConnectDB() {
 	// ✅ Tự động migrate các bảng
 	err = DB.AutoMigrate(
 		&models.NguoiDung{},
+		&models.DanhMuc{},
 		&models.TaiLieu{},
 		&models.Podcast{},
-		&models.DanhMuc{},
 		&models.DanhGia{},
+		&models.PodcastYeuThich{},
+		&models.PodcastLuu{},
+		&models.LichSuNghe{},
 	)
 	if err != nil {
 		log.Fatalf("❌ Auto migration thất bại: %v", err)

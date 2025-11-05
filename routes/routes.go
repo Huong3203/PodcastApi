@@ -41,11 +41,11 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 		admin.PUT("/podcasts/:id", controllers.UpdatePodcast)
 		admin.GET("/stats", controllers.GetAdminStats)
 
-		// === Ratings stats cho admin ===
 		admin.GET("/ratings/stats", controllers.GetAdminRatingsStats)
 
-		// === Lấy tất cả user (chỉ admin) ===
 		admin.GET("/users", controllers.GetAllUsers)
+		admin.PATCH("/users/:id/role", controllers.UpdateUserRole)
+		admin.PATCH("/users/:id/toggle-active", controllers.ToggleUserActivation)
 	}
 
 	// ---------------- CATEGORY ----------------
@@ -70,7 +70,6 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 		publicPodcast.GET("/search", controllers.SearchPodcast)
 		publicPodcast.GET("/:id", controllers.GetPodcastByID)
 
-		// === Ratings public ===
 		publicPodcast.GET("/:id/ratings", controllers.GetPodcastRatings)
 	}
 
@@ -80,8 +79,15 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 		protectedPodcast.POST("/", controllers.CreatePodcastWithUpload)
 		protectedPodcast.PUT("/:id", controllers.UpdatePodcast)
 
-		// === Thêm đánh giá (cần login) ===
 		protectedPodcast.POST("/:id/ratings", controllers.AddPodcastRating)
+
+		// ✅ YÊU THÍCH
+		protectedPodcast.POST("/:id/favorite", controllers.ToggleYeuThichPodcast)
+		protectedPodcast.GET("/favorites/me", controllers.GetMyFavoritePodcasts)
+
+		// ✅ LƯU THƯ VIỆN
+		protectedPodcast.POST("/:id/save", controllers.ToggleLuuPodcast)
+		protectedPodcast.GET("/saved/me", controllers.GetMySavedPodcasts)
 	}
 
 	// ---------------- OTHER ----------------

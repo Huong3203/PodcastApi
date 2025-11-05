@@ -16,7 +16,6 @@ type RegisterInput struct {
 	Email   string `json:"email" binding:"required,email"`
 	MatKhau string `json:"mat_khau" binding:"required,min=6"`
 	HoTen   string `json:"ho_ten" binding:"required"`
-	VaiTro  string `json:"vai_tro"` // ✅ thêm vai trò, tùy chọn
 }
 
 func Register(c *gin.Context) {
@@ -42,19 +41,13 @@ func Register(c *gin.Context) {
 		return
 	}
 
-	// ✅ Nếu không truyền vai_tro → mặc định là user
-	role := input.VaiTro
-	if role == "" {
-		role = "user"
-	}
-
 	// Tạo user mới
 	newUser := models.NguoiDung{
 		ID:       uuid.New().String(),
 		Email:    input.Email,
 		MatKhau:  string(hashedPassword),
 		HoTen:    input.HoTen,
-		VaiTro:   role,
+		VaiTro:   "user",
 		KichHoat: true,
 	}
 
@@ -64,10 +57,7 @@ func Register(c *gin.Context) {
 	}
 
 	newUser.MatKhau = "" // Ẩn mật khẩu
-	c.JSON(http.StatusCreated, gin.H{
-		"message": "Tạo tài khoản thành công",
-		"user":    newUser,
-	})
+	c.JSON(http.StatusCreated, newUser)
 }
 
 type LoginInput struct {
@@ -95,7 +85,7 @@ func Login(c *gin.Context) {
 		return
 	}
 
-	// ✅ Tạo JWT token (gồm id và vai trò)
+	// ✅ Tạo JWT token
 	token, err := utils.GenerateToken(user.ID, user.VaiTro)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể tạo token"})

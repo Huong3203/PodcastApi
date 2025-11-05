@@ -16,10 +16,15 @@ type Podcast struct {
 	TrangThai      string     `gorm:"type:enum('Tắt','Bật'); default:'Tắt'" json:"trang_thai"`
 	NguoiTao       string     `gorm:"type:char(36);not null" json:"nguoi_tao"`
 	NgayTaoRa      time.Time  `gorm:"autoCreateTime" json:"ngay_tao_ra"`
-	NgayXuatBan    *time.Time `gorm:"" json:"ngay_xuat_ban"`
+	NgayXuatBan    *time.Time `json:"ngay_xuat_ban"`
 	TheTag         string     `gorm:"type:varchar(255)" json:"the_tag"`
 	LuotXem        int        `gorm:"type:int;default:0" json:"luot_xem"`
-	// Định nghĩa khóa ngoại
+
+	// ✅ Thêm 2 trường mới
+	LuotLuu      int `gorm:"type:int;default:0" json:"luot_luu"`
+	LuotYeuThich int `gorm:"type:int;default:0" json:"luot_yeu_thich"`
+
+	// Quan hệ
 	TaiLieu TaiLieu `gorm:"foreignKey:TailieuID;references:ID" json:"tailieu"`
 	DanhMuc DanhMuc `gorm:"foreignKey:DanhMucID;references:ID" json:"danhmuc"`
 }

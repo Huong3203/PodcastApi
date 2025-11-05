@@ -42,8 +42,7 @@ func AuthMiddleware() gin.HandlerFunc {
 
 		// Lưu thông tin vào context để controller dùng
 		c.Set("user_id", claims.UserID)
-		c.Set("vai_tro", claims.VaiTro) // ✅ khớp với JWTClaims
-
+		c.Set("vai_tro", claims.Role)
 		c.Next()
 	}
 }
