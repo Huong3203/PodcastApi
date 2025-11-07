@@ -64,7 +64,17 @@ func ClerkLogin(c *gin.Context) {
 	}
 
 	// ✅ Full name
-	fullName := clerkUser.FirstName + " " + clerkUser.LastName
+	fn := ""
+	ln := ""
+
+	if clerkUser.FirstName != nil {
+		fn = *clerkUser.FirstName
+	}
+	if clerkUser.LastName != nil {
+		ln = *clerkUser.LastName
+	}
+
+	fullName := fn + " " + ln
 	if fullName == " " {
 		fullName = "Người dùng"
 	}
