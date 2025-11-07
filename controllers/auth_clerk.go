@@ -15,25 +15,25 @@ import (
 
 var clerkClient clerk.Client
 
-// ✅ Khởi tạo Clerk
+// ✅ Khởi tạo Clerk client lấy từ ENV
 func InitClerk() {
 	secretKey := os.Getenv("CLERK_SECRET_KEY")
 	if secretKey == "" {
 		panic("CLERK_SECRET_KEY không tồn tại trong ENV")
 	}
 
-	var err error
-	clerkClient, err = clerk.NewClient(secretKey)
+	client, err := clerk.NewClient(secretKey)
 	if err != nil {
-		panic("Không thể tạo Clerk client: " + err.Error())
+		panic("Clerk init failed: " + err.Error())
 	}
+
+	clerkClient = client
 }
 
 type ClerkLoginInput struct {
 	ClerkToken string `json:"clerk_token" binding:"required"`
 }
 
-// API đăng nhập bằng Clerk
 func ClerkLogin(c *gin.Context) {
 	var input ClerkLoginInput
 
@@ -42,7 +42,7 @@ func ClerkLogin(c *gin.Context) {
 		return
 	}
 
-	// Verify session token từ Clerk
+	// ✅ verify session token
 	session, err := clerkClient.Sessions().Verify(input.ClerkToken)
 	if err != nil || session == nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Token không hợp lệ"})
@@ -51,23 +51,54 @@ func ClerkLogin(c *gin.Context) {
 
 	userID := session.UserID
 
-	// Lấy dữ liệu user từ Clerk
+	// ✅ Lấy user
 	clerkUser, err := clerkClient.Users().Read(userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể đọc thông tin user từ Clerk"})
 		return
 	}
 
-	email := clerkUser.EmailAddresses[0].EmailAddress
-	fullName := clerkUser.FirstName + " " + clerkUser.LastName
-	avatar := clerkUser.ProfileImageURL
+	// LẤY EMAIL AN TOÀN
+	email := ""
+	if clerkUser.EmailAddress != nil {
+		email = *clerkUser.EmailAddress
+	}
 
-	// Sync xuống MySQL
+	//LẤY TÊN AN TOÀN (pointer string)
+	firstName := ""
+	lastName := ""
+
+	if clerkUser.FirstName != nil {
+		firstName = *clerkUser.FirstName
+	}
+
+	if clerkUser.LastName != nil {
+		lastName = *clerkUser.LastName
+	}
+
+	fullName := firstName + " " + lastName
+	if fullName == " " {
+		fullName = "Người dùng"
+	}
+
+	// ----------------------
+	// ✅ Avatar (pointer string)
+	// ----------------------
+	avatar := ""
+	if clerkUser.ProfileImageURL != nil {
+		avatar = *clerkUser.ProfileImageURL
+	}
+
+	// ✅ Kiểm tra user DB
 	var user models.NguoiDung
-	if err := config.DB.Where("email = ?", email).First(&user).Error; err != nil {
+	result := config.DB.Where("email = ?", email).First(&user)
+
+	if result.Error != nil {
+		// User mới
 		user = models.NguoiDung{
 			ID:       uuid.New().String(),
 			Email:    email,
+			MatKhau:  "clerk",
 			HoTen:    fullName,
 			VaiTro:   "user",
 			Avatar:   avatar,
@@ -80,22 +111,23 @@ func ClerkLogin(c *gin.Context) {
 		}
 	}
 
-	// ✅ Tạo JWT riêng
+	// ✅ Tạo JWT
 	token, err := utils.GenerateToken(user.ID, user.VaiTro)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể tạo JWT"})
 		return
 	}
 
-	// ✅ Trả về token + user info
+	// ✅ Trả về client
 	c.JSON(http.StatusOK, gin.H{
 		"token": token,
 		"user": gin.H{
-			"id":      user.ID,
-			"email":   user.Email,
-			"ho_ten":  user.HoTen,
-			"vai_tro": user.VaiTro,
-			"avatar":  user.Avatar,
+			"id":       user.ID,
+			"email":    user.Email,
+			"ho_ten":   user.HoTen,
+			"vai_tro":  user.VaiTro,
+			"avatar":   user.Avatar,
+			"ngay_tao": user.NgayTao,
 		},
 	})
 }
