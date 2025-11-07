@@ -7,28 +7,34 @@ import (
 	"time"
 
 	"github.com/Huong3203/APIPodcast/config"
+	"github.com/Huong3203/APIPodcast/controllers"
 	"github.com/Huong3203/APIPodcast/routes"
+
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
-	"github.com/joho/godotenv" // ✅ Thêm dòng này để dùng godotenv
+	"github.com/joho/godotenv"
 )
 
 func main() {
+	//Load .env khi chạy local
 	if os.Getenv("DOCKER_ENV") != "true" {
-		_ = godotenv.Load() // chỉ dùng khi chạy local, không lỗi khi thiếu
+		_ = godotenv.Load()
 	}
 
-	// Connect DB
+	// Connect MySQL
 	config.ConnectDB()
 
-	// Setup Gin
+	//Init Clerk Secret Key
+	controllers.InitClerk()
+
+	//Setup Gin
 	r := gin.Default()
 
-	// ✅ Bổ sung cấu hình CORS
+	//CORS
 	r.Use(cors.New(cors.Config{
 		AllowOrigins: []string{
-			"http://localhost:5173",            // ✅ React local
-			"https://your-frontend-domain.com", // ✅ nếu bạn có deploy
+			"http://localhost:5173",            // FE local
+			"https://your-frontend-domain.com", // FE deployed
 		},
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
@@ -37,17 +43,17 @@ func main() {
 		MaxAge:           12 * time.Hour,
 	}))
 
-	// Setup routes
+	// Routes
 	routes.SetupRoutes(r, config.DB)
 
-	// Get port from environment (Railway sets PORT automatically)
+	// Lấy PORT từ ENV (Railway tự set)
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = "8080" // Default local
+		port = "8080"
 	}
 
-	fmt.Printf("🚀 Server starting on port %s\n", port)
+	fmt.Printf("🚀 Server running on port %s\n", port)
 
-	// Start server
+	//Start server
 	log.Fatal(r.Run(":" + port))
 }

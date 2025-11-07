@@ -39,6 +39,7 @@ services:
       GEMINI_API_KEY: ""
       API_BASE_URL: https://podcastapi.onrender.com
       GOOGLE_APPLICATION_CREDENTIALS: /root/credentials/google-credentials.json
+      CLERK_SECRET_KEY: "sk_live_xxx"
     networks:
       - podcast_net
 
