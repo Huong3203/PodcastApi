@@ -15,7 +15,6 @@ import (
 
 var clerkClient clerk.Client
 
-// ✅ Khởi tạo Clerk client lấy từ ENV
 func InitClerk() {
 	secretKey := os.Getenv("CLERK_SECRET_KEY")
 	if secretKey == "" {
@@ -42,8 +41,8 @@ func ClerkLogin(c *gin.Context) {
 		return
 	}
 
-	// ✅ verify session token
-	session, err := clerkClient.Sessions().Verify(input.ClerkToken)
+	// ✅ Verify token (SDK mới yêu cầu 2 tham số)
+	session, err := clerkClient.Sessions().Verify(input.ClerkToken, "")
 	if err != nil || session == nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Token không hợp lệ"})
 		return
@@ -51,50 +50,32 @@ func ClerkLogin(c *gin.Context) {
 
 	userID := session.UserID
 
-	// ✅ Lấy user
+	// ✅ Lấy thông tin user Clerk
 	clerkUser, err := clerkClient.Users().Read(userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể đọc thông tin user từ Clerk"})
 		return
 	}
 
-	// LẤY EMAIL AN TOÀN
+	// ✅ Email
 	email := ""
-	if clerkUser.EmailAddress != nil {
-		email = *clerkUser.EmailAddress
+	if len(clerkUser.EmailAddresses) > 0 {
+		email = clerkUser.EmailAddresses[0].EmailAddress
 	}
 
-	//LẤY TÊN AN TOÀN (pointer string)
-	firstName := ""
-	lastName := ""
-
-	if clerkUser.FirstName != nil {
-		firstName = *clerkUser.FirstName
-	}
-
-	if clerkUser.LastName != nil {
-		lastName = *clerkUser.LastName
-	}
-
-	fullName := firstName + " " + lastName
+	// ✅ Full name
+	fullName := clerkUser.FirstName + " " + clerkUser.LastName
 	if fullName == " " {
 		fullName = "Người dùng"
 	}
 
-	// ----------------------
-	// ✅ Avatar (pointer string)
-	// ----------------------
-	avatar := ""
-	if clerkUser.ProfileImageURL != nil {
-		avatar = *clerkUser.ProfileImageURL
-	}
+	// ✅ Avatar (string)
+	avatar := clerkUser.ProfileImageURL
 
-	// ✅ Kiểm tra user DB
 	var user models.NguoiDung
 	result := config.DB.Where("email = ?", email).First(&user)
 
 	if result.Error != nil {
-		// User mới
 		user = models.NguoiDung{
 			ID:       uuid.New().String(),
 			Email:    email,
@@ -111,14 +92,12 @@ func ClerkLogin(c *gin.Context) {
 		}
 	}
 
-	// ✅ Tạo JWT
 	token, err := utils.GenerateToken(user.ID, user.VaiTro)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể tạo JWT"})
 		return
 	}
 
-	// ✅ Trả về client
 	c.JSON(http.StatusOK, gin.H{
 		"token": token,
 		"user": gin.H{
