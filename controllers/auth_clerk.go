@@ -46,8 +46,7 @@ func ClerkLogin(c *gin.Context) {
 		return
 	}
 
-	userID := session.UserID
-	clerkUser, err := clerkClient.Users().Read(userID)
+	clerkUser, err := clerkClient.Users().Read(session.UserID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể đọc thông tin user từ Clerk"})
 		return
@@ -74,7 +73,7 @@ func ClerkLogin(c *gin.Context) {
 	avatar := clerkUser.ProfileImageURL
 
 	var user models.NguoiDung
-	result := config.DB.Where("email = ?", email).First(&user)
+	result := config.DB.Where("email = ? AND provider = ?", email, "clerk").First(&user)
 
 	if result.Error != nil {
 		user = models.NguoiDung{
@@ -87,29 +86,17 @@ func ClerkLogin(c *gin.Context) {
 			KichHoat: true,
 			Provider: "clerk",
 		}
-
 		if err := config.DB.Create(&user).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể tạo user mới"})
 			return
 		}
 	}
 
-	token, err := utils.GenerateToken(user.ID, user.VaiTro, "clerk")
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể tạo JWT"})
-		return
-	}
+	token, _ := utils.GenerateToken(user.ID, user.VaiTro, "clerk")
 
 	c.JSON(http.StatusOK, gin.H{
-		"token": token,
-		"user": gin.H{
-			"id":       user.ID,
-			"email":    user.Email,
-			"ho_ten":   user.HoTen,
-			"vai_tro":  user.VaiTro,
-			"avatar":   user.Avatar,
-			"provider": "clerk",
-			"ngay_tao": user.NgayTao,
-		},
+		"user":     user,
+		"token":    token,
+		"provider": "clerk",
 	})
 }
