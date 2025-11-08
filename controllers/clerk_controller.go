@@ -20,16 +20,15 @@ func InitClerk() {
 	if secretKey == "" {
 		panic("CLERK_SECRET_KEY không tồn tại trong ENV")
 	}
+
 	client, err := clerk.NewClient(secretKey)
 	if err != nil {
 		panic("Clerk init failed: " + err.Error())
 	}
+
 	clerkClient = client
 }
 
-// ==========================
-// Clerk Login
-// ==========================
 type ClerkLoginInput struct {
 	ClerkToken string `json:"clerk_token" binding:"required"`
 }
@@ -48,36 +47,69 @@ func ClerkLogin(c *gin.Context) {
 	}
 
 	userID := session.UserID
-	clerkUser, _ := clerkClient.Users().Read(userID)
+	clerkUser, err := clerkClient.Users().Read(userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể đọc thông tin user từ Clerk"})
+		return
+	}
 
-	email := clerkUser.EmailAddresses[0].EmailAddress
-	fullName := ""
+	email := ""
+	if len(clerkUser.EmailAddresses) > 0 {
+		email = clerkUser.EmailAddresses[0].EmailAddress
+	}
+
+	fn, ln := "", ""
 	if clerkUser.FirstName != nil {
-		fullName += *clerkUser.FirstName
+		fn = *clerkUser.FirstName
 	}
 	if clerkUser.LastName != nil {
-		fullName += " " + *clerkUser.LastName
+		ln = *clerkUser.LastName
 	}
+
+	fullName := fn + " " + ln
 	if fullName == " " {
 		fullName = "Người dùng"
 	}
+
 	avatar := clerkUser.ProfileImageURL
 
 	var user models.NguoiDung
-	if err := config.DB.Where("email = ?", email).First(&user).Error; err != nil {
+	result := config.DB.Where("email = ?", email).First(&user)
+
+	if result.Error != nil {
 		user = models.NguoiDung{
 			ID:       uuid.New().String(),
 			Email:    email,
 			MatKhau:  "clerk",
 			HoTen:    fullName,
 			VaiTro:   "user",
+			Avatar:   avatar,
 			KichHoat: true,
 			Provider: "clerk",
-			Avatar:   avatar,
 		}
-		config.DB.Create(&user)
+
+		if err := config.DB.Create(&user).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể tạo user mới"})
+			return
+		}
 	}
 
-	token, _ := utils.GenerateToken(user.ID, user.VaiTro, user.Provider)
-	c.JSON(http.StatusOK, gin.H{"token": token, "user": user})
+	token, err := utils.GenerateToken(user.ID, user.VaiTro, "clerk")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể tạo JWT"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"token": token,
+		"user": gin.H{
+			"id":       user.ID,
+			"email":    user.Email,
+			"ho_ten":   user.HoTen,
+			"vai_tro":  user.VaiTro,
+			"avatar":   user.Avatar,
+			"provider": "clerk",
+			"ngay_tao": user.NgayTao,
+		},
+	})
 }

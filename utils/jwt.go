@@ -8,7 +8,6 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-// JWTClaims lưu thông tin token
 type JWTClaims struct {
 	UserID   string `json:"user_id"`
 	Role     string `json:"role"`
@@ -16,7 +15,6 @@ type JWTClaims struct {
 	jwt.RegisteredClaims
 }
 
-// Tạo token
 func GenerateToken(userID, role, provider string) (string, error) {
 	jwtKey := []byte(os.Getenv("JWT_SECRET"))
 	if len(jwtKey) == 0 {
@@ -37,7 +35,6 @@ func GenerateToken(userID, role, provider string) (string, error) {
 	return token.SignedString(jwtKey)
 }
 
-// Xác minh token
 func VerifyToken(tokenStr string) (*JWTClaims, error) {
 	jwtKey := []byte(os.Getenv("JWT_SECRET"))
 	if len(jwtKey) == 0 {

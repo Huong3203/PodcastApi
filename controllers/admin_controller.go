@@ -8,26 +8,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// ==========================
-// Thống kê admin
-// ==========================
-func GetAdminStats(c *gin.Context) {
-	role, _ := c.Get("vai_tro")
-	if role != "admin" {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Bạn không có quyền truy cập"})
-		return
-	}
-
-	db := config.DB
-	var userCount int64
-	db.Model(&models.NguoiDung{}).Count(&userCount)
-
-	c.JSON(http.StatusOK, gin.H{"total_users": userCount})
-}
-
-// ==========================
-// Quản lý user: danh sách, đổi role, khóa/kích hoạt
-// ==========================
 func GetAllUsers(c *gin.Context) {
 	role, _ := c.Get("vai_tro")
 	if role != "admin" {
@@ -45,7 +25,10 @@ func GetAllUsers(c *gin.Context) {
 		users[i].MatKhau = ""
 	}
 
-	c.JSON(http.StatusOK, gin.H{"total": len(users), "users": users})
+	c.JSON(http.StatusOK, gin.H{
+		"total": len(users),
+		"users": users,
+	})
 }
 
 func UpdateUserRole(c *gin.Context) {
@@ -97,5 +80,8 @@ func ToggleUserActivation(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Cập nhật trạng thái thành công", "kich_hoat": newStatus})
+	c.JSON(http.StatusOK, gin.H{
+		"message":   "Cập nhật trạng thái thành công",
+		"kich_hoat": newStatus,
+	})
 }
