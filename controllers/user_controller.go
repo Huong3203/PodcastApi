@@ -127,96 +127,96 @@ func ChangePassword(c *gin.Context) {
 // 🔹 GET /api/admin/users
 // ==========================
 // Lấy tất cả user (chỉ admin)
-func GetAllUsers(c *gin.Context) {
-	role, _ := c.Get("vai_tro")
-	if role != "admin" {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Chỉ admin mới có quyền truy cập"})
-		return
-	}
+// func GetAllUsers(c *gin.Context) {
+// 	role, _ := c.Get("vai_tro")
+// 	if role != "admin" {
+// 		c.JSON(http.StatusForbidden, gin.H{"error": "Chỉ admin mới có quyền truy cập"})
+// 		return
+// 	}
 
-	db := config.DB
-	var users []models.NguoiDung
+// 	db := config.DB
+// 	var users []models.NguoiDung
 
-	if err := db.Find(&users).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể lấy danh sách người dùng"})
-		return
-	}
+// 	if err := db.Find(&users).Error; err != nil {
+// 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể lấy danh sách người dùng"})
+// 		return
+// 	}
 
-	// Ẩn mật khẩu trước khi trả
-	for i := range users {
-		users[i].MatKhau = ""
-	}
+// 	// Ẩn mật khẩu trước khi trả
+// 	for i := range users {
+// 		users[i].MatKhau = ""
+// 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"total": len(users),
-		"users": users,
-	})
-}
+// 	c.JSON(http.StatusOK, gin.H{
+// 		"total": len(users),
+// 		"users": users,
+// 	})
+// }
 
-// ==========================
-// 🔹 PATCH /api/admin/users/:id/role
-// Đổi vai trò user
-// ==========================
-func UpdateUserRole(c *gin.Context) {
-	role, _ := c.Get("vai_tro")
-	if role != "admin" {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Chỉ admin mới có quyền đổi vai trò"})
-		return
-	}
+// // ==========================
+// // 🔹 PATCH /api/admin/users/:id/role
+// // Đổi vai trò user
+// // ==========================
+// func UpdateUserRole(c *gin.Context) {
+// 	role, _ := c.Get("vai_tro")
+// 	if role != "admin" {
+// 		c.JSON(http.StatusForbidden, gin.H{"error": "Chỉ admin mới có quyền đổi vai trò"})
+// 		return
+// 	}
 
-	id := c.Param("id")
+// 	id := c.Param("id")
 
-	var input struct {
-		VaiTro string `json:"vai_tro"`
-	}
-	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Dữ liệu không hợp lệ"})
-		return
-	}
+// 	var input struct {
+// 		VaiTro string `json:"vai_tro"`
+// 	}
+// 	if err := c.ShouldBindJSON(&input); err != nil {
+// 		c.JSON(http.StatusBadRequest, gin.H{"error": "Dữ liệu không hợp lệ"})
+// 		return
+// 	}
 
-	if input.VaiTro != "admin" && input.VaiTro != "user" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Vai trò không hợp lệ"})
-		return
-	}
+// 	if input.VaiTro != "admin" && input.VaiTro != "user" {
+// 		c.JSON(http.StatusBadRequest, gin.H{"error": "Vai trò không hợp lệ"})
+// 		return
+// 	}
 
-	if err := config.DB.Model(&models.NguoiDung{}).
-		Where("id = ?", id).
-		Update("vai_tro", input.VaiTro).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể cập nhật vai trò"})
-		return
-	}
+// 	if err := config.DB.Model(&models.NguoiDung{}).
+// 		Where("id = ?", id).
+// 		Update("vai_tro", input.VaiTro).Error; err != nil {
+// 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể cập nhật vai trò"})
+// 		return
+// 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Cập nhật vai trò thành công"})
-}
+// 	c.JSON(http.StatusOK, gin.H{"message": "Cập nhật vai trò thành công"})
+// }
 
-// ==========================
-// 🔹 PATCH /api/admin/users/:id/toggle-active
-// Khóa / kích hoạt tài khoản user
-// ==========================
-func ToggleUserActivation(c *gin.Context) {
-	role, _ := c.Get("vai_tro")
-	if role != "admin" {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Chỉ admin mới có quyền cập nhật trạng thái"})
-		return
-	}
+// // ==========================
+// // 🔹 PATCH /api/admin/users/:id/toggle-active
+// // Khóa / kích hoạt tài khoản user
+// // ==========================
+// func ToggleUserActivation(c *gin.Context) {
+// 	role, _ := c.Get("vai_tro")
+// 	if role != "admin" {
+// 		c.JSON(http.StatusForbidden, gin.H{"error": "Chỉ admin mới có quyền cập nhật trạng thái"})
+// 		return
+// 	}
 
-	id := c.Param("id")
+// 	id := c.Param("id")
 
-	var user models.NguoiDung
-	if err := config.DB.First(&user, "id = ?", id).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy người dùng"})
-		return
-	}
+// 	var user models.NguoiDung
+// 	if err := config.DB.First(&user, "id = ?", id).Error; err != nil {
+// 		c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy người dùng"})
+// 		return
+// 	}
 
-	newStatus := !user.KichHoat
+// 	newStatus := !user.KichHoat
 
-	if err := config.DB.Model(&user).Update("kich_hoat", newStatus).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể cập nhật trạng thái"})
-		return
-	}
+// 	if err := config.DB.Model(&user).Update("kich_hoat", newStatus).Error; err != nil {
+// 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể cập nhật trạng thái"})
+// 		return
+// 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"message":   "Cập nhật trạng thái thành công",
-		"kich_hoat": newStatus,
-	})
-}
+// 	c.JSON(http.StatusOK, gin.H{
+// 		"message":   "Cập nhật trạng thái thành công",
+// 		"kich_hoat": newStatus,
+// 	})
+// }
