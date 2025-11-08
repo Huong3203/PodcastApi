@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"database/sql"
 	"net/http"
 	"strconv"
 
@@ -58,20 +59,30 @@ func GetPodcastRatings(c *gin.Context) {
 	podcastID := c.Param("id")
 
 	var ratings []models.DanhGia
-	if err := db.Preload("User").Preload("Podcast").Where("podcast_id = ?", podcastID).Find(&ratings).Error; err != nil {
+	if err := db.Preload("User").Preload("Podcast").
+		Where("podcast_id = ?", podcastID).Find(&ratings).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể lấy đánh giá"})
 		return
 	}
 
-	// Tính điểm trung bình
-	var avg float64
-	if err := db.Model(&models.DanhGia{}).Where("podcast_id = ?", podcastID).Select("AVG(sao)").Scan(&avg).Error; err != nil {
-		avg = 0
+	// ✅ Dùng sql.NullFloat64 để tránh lỗi NULL
+	var avg sql.NullFloat64
+	if err := db.Model(&models.DanhGia{}).
+		Where("podcast_id = ?", podcastID).
+		Select("AVG(sao)").
+		Scan(&avg).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể tính điểm trung bình"})
+		return
+	}
+
+	avgScore := 0.0
+	if avg.Valid {
+		avgScore = avg.Float64
 	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"ratings":     ratings,
-		"avg_rating":  avg,
+		"avg_rating":  avgScore,
 		"total_votes": len(ratings),
 	})
 }
@@ -89,13 +100,18 @@ func GetAdminRatingsStats(c *gin.Context) {
 	db := config.DB
 
 	var totalRatings int64
-	var avgRating float64
+	var avgRating sql.NullFloat64
 
 	db.Model(&models.DanhGia{}).Count(&totalRatings)
 	db.Model(&models.DanhGia{}).Select("AVG(sao)").Scan(&avgRating)
 
+	avgScore := 0.0
+	if avgRating.Valid {
+		avgScore = avgRating.Float64
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"total_ratings": totalRatings,
-		"avg_rating":    avgRating,
+		"avg_rating":    avgScore,
 	})
 }
