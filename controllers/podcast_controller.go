@@ -141,7 +141,7 @@ func GetPodcastByID(c *gin.Context) {
 	})
 }
 
-// Lấy danh sách podcast bị tắt
+// Lấy danh sách podcast đang tắt
 func GetDisabledPodcasts(c *gin.Context) {
 	var podcasts []models.Podcast
 
@@ -152,7 +152,7 @@ func GetDisabledPodcasts(c *gin.Context) {
 
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":  "Lỗi khi lấy danh sách podcast bị tắt",
-			"detail": err.Error(), // ✅ hiện lỗi thật để debug
+			"detail": err.Error(), // hiện chi tiết lỗi để debug
 		})
 		return
 	}
