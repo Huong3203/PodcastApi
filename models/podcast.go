@@ -20,7 +20,7 @@ type Podcast struct {
 	TheTag         string     `gorm:"type:varchar(255)" json:"the_tag"`
 	LuotXem        int        `gorm:"type:int;default:0" json:"luot_xem"`
 
-	// ✅ Thêm 2 trường mới
+	//  2 trường mới
 	LuotLuu      int `gorm:"type:int;default:0" json:"luot_luu"`
 	LuotYeuThich int `gorm:"type:int;default:0" json:"luot_yeu_thich"`
 
