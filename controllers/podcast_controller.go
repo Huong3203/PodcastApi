@@ -141,6 +141,36 @@ func GetPodcastByID(c *gin.Context) {
 	})
 }
 
+// lấy podcast bị tắt
+func GetDisabledPodcasts(c *gin.Context) {
+	var podcasts []models.Podcast
+
+	// 🔍 Lấy tất cả podcast đang bị tắt (kich_hoat = false)
+	if err := config.DB.
+		Where("kich_hoat = ?", false).
+		Order("ngay_tao_ra DESC").
+		Find(&podcasts).Error; err != nil {
+
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Lỗi khi lấy danh sách podcast bị tắt",
+		})
+		return
+	}
+
+	if len(podcasts) == 0 {
+		c.JSON(http.StatusOK, gin.H{
+			"message": "Không có podcast nào đang bị tắt",
+			"data":    []models.Podcast{},
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"count": len(podcasts),
+		"data":  podcasts,
+	})
+}
+
 // ==========================
 // 🔹 Tạo podcast (yêu cầu đăng nhập)
 // ==========================

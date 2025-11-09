@@ -70,7 +70,7 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 		publicPodcast.GET("/", controllers.GetPodcast)
 		publicPodcast.GET("/search", controllers.SearchPodcast)
 		publicPodcast.GET("/:id", controllers.GetPodcastByID)
-
+		publicPodcast.GET("/disabled", controllers.GetDisabledPodcasts)
 		publicPodcast.GET("/:id/ratings", controllers.GetPodcastRatings)
 	}
 
