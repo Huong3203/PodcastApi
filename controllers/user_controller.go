@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/Huong3203/APIPodcast/config"
 	"github.com/Huong3203/APIPodcast/models"
@@ -12,9 +13,70 @@ import (
 // ==========================
 // 🔹 GET /api/users/profile
 // ==========================
+// func GetProfile(c *gin.Context) {
+// 	userID := c.GetString("user_id")
+
+// 	var user models.NguoiDung
+// 	if err := config.DB.First(&user, "id = ?", userID).Error; err != nil {
+// 		c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy người dùng"})
+// 		return
+// 	}
+
+// 	user.MatKhau = ""
+// 	c.JSON(http.StatusOK, user)
+// }
+
 func GetProfile(c *gin.Context) {
 	userID := c.GetString("user_id")
+	provider := c.GetString("provider")
 
+	// Nếu là Clerk → gọi Clerk API để lấy dữ liệu thật
+	if provider == "clerk" {
+		sessionToken := c.GetHeader("Authorization")
+		if sessionToken == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Thiếu Authorization token"})
+			return
+		}
+
+		// Loại bỏ "Bearer "
+		token := strings.TrimPrefix(sessionToken, "Bearer ")
+
+		session, err := clerkClient.Sessions().Verify(token, "")
+		if err != nil || session == nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Token Clerk không hợp lệ"})
+			return
+		}
+
+		userData, err := clerkClient.Users().Read(session.UserID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể lấy thông tin từ Clerk"})
+			return
+		}
+
+		email := ""
+		if len(userData.EmailAddresses) > 0 {
+			email = userData.EmailAddresses[0].EmailAddress
+		}
+
+		fn, ln := "", ""
+		if userData.FirstName != nil {
+			fn = *userData.FirstName
+		}
+		if userData.LastName != nil {
+			ln = *userData.LastName
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"id":       session.UserID,
+			"email":    email,
+			"ho_ten":   fn + " " + ln,
+			"avatar":   userData.ProfileImageURL,
+			"provider": "clerk",
+		})
+		return
+	}
+
+	// Mặc định: user local
 	var user models.NguoiDung
 	if err := config.DB.First(&user, "id = ?", userID).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy người dùng"})
