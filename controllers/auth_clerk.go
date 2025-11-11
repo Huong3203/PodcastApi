@@ -40,12 +40,14 @@ func ClerkLogin(c *gin.Context) {
 		return
 	}
 
+	// Verify token Clerk
 	session, err := clerkClient.Sessions().Verify(input.ClerkToken, "")
 	if err != nil || session == nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Token không hợp lệ"})
 		return
 	}
 
+	// Lấy user info từ Clerk
 	clerkUser, err := clerkClient.Users().Read(session.UserID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể đọc thông tin user từ Clerk"})
@@ -72,14 +74,16 @@ func ClerkLogin(c *gin.Context) {
 
 	avatar := clerkUser.ProfileImageURL
 
+	// Kiểm tra user đã có trong DB chưa
 	var user models.NguoiDung
 	result := config.DB.Where("email = ? AND provider = ?", email, "clerk").First(&user)
 
-	if result.Error != nil {
+	if result.Error != nil || result.RowsAffected == 0 {
+		// Tạo mới nếu chưa có
 		user = models.NguoiDung{
 			ID:       uuid.New().String(),
 			Email:    email,
-			MatKhau:  "clerk",
+			MatKhau:  "clerk", // placeholder, không dùng
 			HoTen:    fullName,
 			VaiTro:   "user",
 			Avatar:   avatar,
@@ -92,7 +96,12 @@ func ClerkLogin(c *gin.Context) {
 		}
 	}
 
-	token, _ := utils.GenerateToken(user.ID, user.VaiTro, "clerk")
+	// Tạo token backend
+	token, err := utils.GenerateToken(user.ID, user.VaiTro, "clerk")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể tạo token"})
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"user":     user,
