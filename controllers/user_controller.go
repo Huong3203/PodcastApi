@@ -1,10 +1,13 @@
 package controllers
 
 import (
+	"fmt"
+	"mime/multipart"
 	"net/http"
 
 	"github.com/Huong3203/APIPodcast/config"
 	"github.com/Huong3203/APIPodcast/models"
+	"github.com/Huong3203/APIPodcast/utils"
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
@@ -30,20 +33,25 @@ func GetProfile(c *gin.Context) {
 // 🔹 PUT /api/users/profile
 // ==========================
 type UpdateProfileInput struct {
-	HoTen  string `json:"ho_ten" binding:"required"`
-	Email  string `json:"email" binding:"required,email"`
-	Avatar string `json:"avatar"`
+	HoTen  string                `form:"ho_ten" binding:"required"`
+	Email  string                `form:"email" binding:"required,email"`
+	Avatar *multipart.FileHeader `form:"avatar"` // avatar có thể upload
 }
 
 func UpdateProfile(c *gin.Context) {
 	userID := c.GetString("user_id")
+	if userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Chưa đăng nhập"})
+		return
+	}
 
 	var input UpdateProfileInput
-	if err := c.ShouldBindJSON(&input); err != nil {
+	if err := c.ShouldBind(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
+	// Check email đã tồn tại
 	var existingUser models.NguoiDung
 	if err := config.DB.Where("email = ? AND id != ?", input.Email, userID).First(&existingUser).Error; err == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Email đã được sử dụng"})
@@ -54,10 +62,19 @@ func UpdateProfile(c *gin.Context) {
 		"ho_ten": input.HoTen,
 		"email":  input.Email,
 	}
-	if input.Avatar != "" {
-		updateData["avatar"] = input.Avatar
+
+	// Nếu upload avatar mới
+	if input.Avatar != nil {
+		fileID := fmt.Sprintf("avatar_%s", userID)
+		avatarURL, err := utils.UploadImageToSupabase(input.Avatar, fileID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể upload ảnh"})
+			return
+		}
+		updateData["avatar"] = avatarURL
 	}
 
+	// Update DB
 	tx := config.DB.Model(&models.NguoiDung{}).Where("id = ?", userID).Updates(updateData)
 	if tx.RowsAffected == 0 {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy người dùng"})
@@ -68,7 +85,7 @@ func UpdateProfile(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Cập nhật thành công"})
+	c.JSON(http.StatusOK, gin.H{"message": "Cập nhật thành công", "avatar": updateData["avatar"]})
 }
 
 // ==========================
