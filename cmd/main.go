@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/Huong3203/APIPodcast/config"
-	"github.com/Huong3203/APIPodcast/controllers"
 	"github.com/Huong3203/APIPodcast/routes"
 
 	"github.com/gin-contrib/cors"
@@ -16,7 +15,7 @@ import (
 )
 
 func main() {
-	//Load .env khi chạy local
+	// Load .env khi chạy local
 	if os.Getenv("DOCKER_ENV") != "true" {
 		_ = godotenv.Load()
 	}
@@ -24,13 +23,10 @@ func main() {
 	// Connect MySQL
 	config.ConnectDB()
 
-	//Init Clerk Secret Key
-	controllers.InitClerk()
-
-	//Setup Gin
+	// Setup Gin
 	r := gin.Default()
 
-	//CORS
+	// CORS
 	r.Use(cors.New(cors.Config{
 		AllowOrigins: []string{
 			"http://localhost:5173",            // FE local
@@ -44,7 +40,7 @@ func main() {
 	}))
 
 	// Routes
-	routes.SetupRoutes(r, config.DB)
+	routes.SetupRoutes(r, config.DB) // setup tất cả các route, bao gồm route login với Clerk
 
 	// Lấy PORT từ ENV (Railway tự set)
 	port := os.Getenv("PORT")
@@ -52,8 +48,8 @@ func main() {
 		port = "8080"
 	}
 
-	fmt.Printf("🚀 Server running on port %s\n", port)
+	fmt.Printf("Server running on port %s\n", port)
 
-	//Start server
+	// Start server
 	log.Fatal(r.Run(":" + port))
 }
