@@ -13,9 +13,8 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// ==========================
 // 🔹 GET /api/users/profile
-// ==========================
+
 func GetProfile(c *gin.Context) {
 	userID := c.GetString("user_id")
 
@@ -29,9 +28,8 @@ func GetProfile(c *gin.Context) {
 	c.JSON(http.StatusOK, user)
 }
 
-// ==========================
 // 🔹 PUT /api/users/profile
-// ==========================
+
 type UpdateProfileInput struct {
 	HoTen  string                `form:"ho_ten" binding:"required"`
 	Email  string                `form:"email" binding:"required,email"`
@@ -65,10 +63,9 @@ func UpdateProfile(c *gin.Context) {
 
 	// Nếu upload avatar mới
 	if input.Avatar != nil {
-		fileID := fmt.Sprintf("avatar_%s", userID)
-		avatarURL, err := utils.UploadImageToSupabase(input.Avatar, fileID)
+		avatarURL, err := utils.UploadAvatarToSupabase(input.Avatar, fmt.Sprintf("avatar_%s", userID))
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể upload ảnh"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể upload avatar"})
 			return
 		}
 		updateData["avatar"] = avatarURL
@@ -88,9 +85,8 @@ func UpdateProfile(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Cập nhật thành công", "avatar": updateData["avatar"]})
 }
 
-// ==========================
 // 🔹 POST /api/users/change-password
-// ==========================
+
 type ChangePasswordInput struct {
 	MatKhauCu  string `json:"mat_khau_cu" binding:"required"`
 	MatKhauMoi string `json:"mat_khau_moi" binding:"required,min=6"`
@@ -130,9 +126,8 @@ func ChangePassword(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Đổi mật khẩu thành công"})
 }
 
-// ==========================
 // 🔹 GET /api/admin/users
-// ==========================
+
 func GetAllUsers(c *gin.Context) {
 	role, _ := c.Get("vai_tro")
 	if role != "admin" {
