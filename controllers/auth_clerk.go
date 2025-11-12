@@ -2,106 +2,59 @@ package controllers
 
 import (
 	"net/http"
-	"os"
 
 	"github.com/Huong3203/APIPodcast/config"
 	"github.com/Huong3203/APIPodcast/models"
 	"github.com/Huong3203/APIPodcast/utils"
 
-	"github.com/clerkinc/clerk-sdk-go/clerk"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
 
-var clerkClient clerk.Client
-
-func InitClerk() {
-	secretKey := os.Getenv("CLERK_SECRET_KEY")
-	if secretKey == "" {
-		panic("CLERK_SECRET_KEY không tồn tại trong ENV")
-	}
-
-	client, err := clerk.NewClient(secretKey)
-	if err != nil {
-		panic("Clerk init failed: " + err.Error())
-	}
-
-	clerkClient = client
-}
-
+// Input khi client gửi idToken từ Clerk/Google
 type ClerkLoginInput struct {
-	ClerkToken string `json:"clerk_token" binding:"required"`
+	IDToken string `json:"id_token" binding:"required"`
+	Email   string `json:"email" binding:"required,email"`
+	HoTen   string `json:"ho_ten"`
+	Avatar  string `json:"avatar"`
 }
 
-func ClerkLogin(c *gin.Context) {
+// API đăng nhập với Google/Clerk
+func LoginWithClerk(c *gin.Context) {
 	var input ClerkLoginInput
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Thiếu clerk_token"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	// Verify token Clerk
-	session, err := clerkClient.Sessions().Verify(input.ClerkToken, "")
-	if err != nil || session == nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Token không hợp lệ"})
-		return
-	}
+	// TODO: Validate idToken với Clerk API nếu cần (verify token)
+	// Ví dụ: utils.VerifyClerkToken(input.IDToken)
 
-	// Lấy user info từ Clerk
-	clerkUser, err := clerkClient.Users().Read(session.UserID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể đọc thông tin user từ Clerk"})
-		return
-	}
-
-	email := ""
-	if len(clerkUser.EmailAddresses) > 0 {
-		email = clerkUser.EmailAddresses[0].EmailAddress
-	}
-
-	fn, ln := "", ""
-	if clerkUser.FirstName != nil {
-		fn = *clerkUser.FirstName
-	}
-	if clerkUser.LastName != nil {
-		ln = *clerkUser.LastName
-	}
-
-	fullName := fn + " " + ln
-	if fullName == " " {
-		fullName = "Người dùng"
-	}
-
-	avatar := clerkUser.ProfileImageURL
-
-	// Kiểm tra user đã có trong DB chưa
 	var user models.NguoiDung
-	result := config.DB.Where("email = ? AND provider = ?", email, "clerk").First(&user)
-
-	if result.Error != nil || result.RowsAffected == 0 {
-		// Tạo mới nếu chưa có
-		user = models.NguoiDung{
+	err := config.DB.Where("email = ? AND provider = ?", input.Email, "clerk").First(&user).Error
+	if err != nil {
+		// Người dùng chưa tồn tại, tạo mới
+		newUser := models.NguoiDung{
 			ID:       uuid.New().String(),
-			Email:    email,
-			MatKhau:  "clerk", // placeholder, không dùng
-			HoTen:    fullName,
+			Email:    input.Email,
+			HoTen:    input.HoTen,
+			Avatar:   input.Avatar,
 			VaiTro:   "user",
-			Avatar:   avatar,
 			KichHoat: true,
 			Provider: "clerk",
 		}
-		if err := config.DB.Create(&user).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể tạo user mới"})
+
+		if err := config.DB.Create(&newUser).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi khi tạo người dùng"})
 			return
 		}
+
+		user = newUser
 	}
 
-	// Tạo token backend
-	token, err := utils.GenerateToken(user.ID, user.VaiTro, "clerk")
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể tạo token"})
-		return
-	}
+	// Tạo token JWT
+	token, _ := utils.GenerateToken(user.ID, user.VaiTro, "clerk")
+	user.MatKhau = "" // ẩn mật khẩu
 
 	c.JSON(http.StatusOK, gin.H{
 		"user":     user,

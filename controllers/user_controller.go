@@ -2,10 +2,10 @@ package controllers
 
 import (
 	"net/http"
-	"strings"
 
 	"github.com/Huong3203/APIPodcast/config"
 	"github.com/Huong3203/APIPodcast/models"
+
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -13,70 +13,9 @@ import (
 // ==========================
 // 🔹 GET /api/users/profile
 // ==========================
-// func GetProfile(c *gin.Context) {
-// 	userID := c.GetString("user_id")
-
-// 	var user models.NguoiDung
-// 	if err := config.DB.First(&user, "id = ?", userID).Error; err != nil {
-// 		c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy người dùng"})
-// 		return
-// 	}
-
-// 	user.MatKhau = ""
-// 	c.JSON(http.StatusOK, user)
-// }
-
 func GetProfile(c *gin.Context) {
 	userID := c.GetString("user_id")
-	provider := c.GetString("provider")
 
-	// Nếu là Clerk → gọi Clerk API để lấy dữ liệu thật
-	if provider == "clerk" {
-		sessionToken := c.GetHeader("Authorization")
-		if sessionToken == "" {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Thiếu Authorization token"})
-			return
-		}
-
-		// Loại bỏ "Bearer "
-		token := strings.TrimPrefix(sessionToken, "Bearer ")
-
-		session, err := clerkClient.Sessions().Verify(token, "")
-		if err != nil || session == nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Token Clerk không hợp lệ"})
-			return
-		}
-
-		userData, err := clerkClient.Users().Read(session.UserID)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể lấy thông tin từ Clerk"})
-			return
-		}
-
-		email := ""
-		if len(userData.EmailAddresses) > 0 {
-			email = userData.EmailAddresses[0].EmailAddress
-		}
-
-		fn, ln := "", ""
-		if userData.FirstName != nil {
-			fn = *userData.FirstName
-		}
-		if userData.LastName != nil {
-			ln = *userData.LastName
-		}
-
-		c.JSON(http.StatusOK, gin.H{
-			"id":       session.UserID,
-			"email":    email,
-			"ho_ten":   fn + " " + ln,
-			"avatar":   userData.ProfileImageURL,
-			"provider": "clerk",
-		})
-		return
-	}
-
-	// Mặc định: user local
 	var user models.NguoiDung
 	if err := config.DB.First(&user, "id = ?", userID).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy người dùng"})
@@ -93,7 +32,7 @@ func GetProfile(c *gin.Context) {
 type UpdateProfileInput struct {
 	HoTen  string `json:"ho_ten" binding:"required"`
 	Email  string `json:"email" binding:"required,email"`
-	Avatar string `json:"avatar"` // ✅ avatar, không bắt buộc
+	Avatar string `json:"avatar"`
 }
 
 func UpdateProfile(c *gin.Context) {
@@ -105,16 +44,12 @@ func UpdateProfile(c *gin.Context) {
 		return
 	}
 
-	// Kiểm tra email đã tồn tại (trừ user hiện tại)
 	var existingUser models.NguoiDung
-	if err := config.DB.
-		Where("email = ? AND id != ?", input.Email, userID).
-		First(&existingUser).Error; err == nil {
+	if err := config.DB.Where("email = ? AND id != ?", input.Email, userID).First(&existingUser).Error; err == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Email đã được sử dụng"})
 		return
 	}
 
-	// Tạo map cập nhật
 	updateData := map[string]interface{}{
 		"ho_ten": input.HoTen,
 		"email":  input.Email,
@@ -123,15 +58,11 @@ func UpdateProfile(c *gin.Context) {
 		updateData["avatar"] = input.Avatar
 	}
 
-	tx := config.DB.Model(&models.NguoiDung{}).
-		Where("id = ?", userID).
-		Updates(updateData)
-
+	tx := config.DB.Model(&models.NguoiDung{}).Where("id = ?", userID).Updates(updateData)
 	if tx.RowsAffected == 0 {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy người dùng"})
 		return
 	}
-
 	if tx.Error != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Cập nhật thất bại"})
 		return
@@ -163,20 +94,17 @@ func ChangePassword(c *gin.Context) {
 		return
 	}
 
-	// Kiểm tra mật khẩu cũ
 	if err := bcrypt.CompareHashAndPassword([]byte(user.MatKhau), []byte(input.MatKhauCu)); err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Mật khẩu cũ không đúng"})
 		return
 	}
 
-	// Hash mật khẩu mới
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(input.MatKhauMoi), bcrypt.DefaultCost)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể mã hoá mật khẩu"})
 		return
 	}
 
-	// Cập nhật mật khẩu
 	if err := config.DB.Model(&user).Update("mat_khau", string(hashedPassword)).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Đổi mật khẩu thất bại"})
 		return
@@ -188,7 +116,6 @@ func ChangePassword(c *gin.Context) {
 // ==========================
 // 🔹 GET /api/admin/users
 // ==========================
-// Lấy tất cả user (chỉ admin)
 func GetAllUsers(c *gin.Context) {
 	role, _ := c.Get("vai_tro")
 	if role != "admin" {
@@ -196,28 +123,21 @@ func GetAllUsers(c *gin.Context) {
 		return
 	}
 
-	db := config.DB
 	var users []models.NguoiDung
-
-	if err := db.Find(&users).Error; err != nil {
+	if err := config.DB.Find(&users).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể lấy danh sách người dùng"})
 		return
 	}
 
-	// Ẩn mật khẩu trước khi trả
 	for i := range users {
 		users[i].MatKhau = ""
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"total": len(users),
-		"users": users,
-	})
+	c.JSON(http.StatusOK, gin.H{"total": len(users), "users": users})
 }
 
 // ==========================
 // 🔹 PATCH /api/admin/users/:id/role
-// Đổi vai trò user
 // ==========================
 func UpdateUserRole(c *gin.Context) {
 	role, _ := c.Get("vai_tro")
@@ -227,7 +147,6 @@ func UpdateUserRole(c *gin.Context) {
 	}
 
 	id := c.Param("id")
-
 	var input struct {
 		VaiTro string `json:"vai_tro"`
 	}
@@ -235,15 +154,12 @@ func UpdateUserRole(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Dữ liệu không hợp lệ"})
 		return
 	}
-
 	if input.VaiTro != "admin" && input.VaiTro != "user" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Vai trò không hợp lệ"})
 		return
 	}
 
-	if err := config.DB.Model(&models.NguoiDung{}).
-		Where("id = ?", id).
-		Update("vai_tro", input.VaiTro).Error; err != nil {
+	if err := config.DB.Model(&models.NguoiDung{}).Where("id = ?", id).Update("vai_tro", input.VaiTro).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể cập nhật vai trò"})
 		return
 	}
@@ -253,7 +169,6 @@ func UpdateUserRole(c *gin.Context) {
 
 // ==========================
 // 🔹 PATCH /api/admin/users/:id/toggle-active
-// Khóa / kích hoạt tài khoản user
 // ==========================
 func ToggleUserActivation(c *gin.Context) {
 	role, _ := c.Get("vai_tro")
@@ -263,7 +178,6 @@ func ToggleUserActivation(c *gin.Context) {
 	}
 
 	id := c.Param("id")
-
 	var user models.NguoiDung
 	if err := config.DB.First(&user, "id = ?", id).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy người dùng"})
@@ -271,14 +185,10 @@ func ToggleUserActivation(c *gin.Context) {
 	}
 
 	newStatus := !user.KichHoat
-
 	if err := config.DB.Model(&user).Update("kich_hoat", newStatus).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể cập nhật trạng thái"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"message":   "Cập nhật trạng thái thành công",
-		"kich_hoat": newStatus,
-	})
+	c.JSON(http.StatusOK, gin.H{"message": "Cập nhật trạng thái thành công", "kich_hoat": newStatus})
 }
