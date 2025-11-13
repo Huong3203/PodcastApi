@@ -8,9 +8,11 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// 🔹 LẤY TẤT CẢ THÔNG BÁO CỦA USER
+// ---------------- USER ----------------
+
+// Lấy tất cả thông báo của user
 func GetMyNotifications(c *gin.Context) {
-	userID := c.GetString("user_id") // lấy từ middleware Auth
+	userID := c.GetString("user_id")
 
 	var notifications []models.Notification
 	if err := config.DB.
@@ -24,7 +26,7 @@ func GetMyNotifications(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": notifications})
 }
 
-// 🔹 ĐÁNH DẤU 1 THÔNG BÁO CỦA USER ĐÃ ĐỌC
+// Đánh dấu 1 thông báo của user đã đọc
 func MarkMyNotificationAsRead(c *gin.Context) {
 	userID := c.GetString("user_id")
 	notiID := c.Param("id")
@@ -41,7 +43,7 @@ func MarkMyNotificationAsRead(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Đã đánh dấu là đã đọc"})
 }
 
-// 🔹 ĐÁNH DẤU TẤT CẢ THÔNG BÁO CỦA USER ĐÃ ĐỌC
+// Đánh dấu tất cả thông báo của user đã đọc
 func MarkAllMyNotificationsAsRead(c *gin.Context) {
 	userID := c.GetString("user_id")
 
@@ -52,22 +54,18 @@ func MarkAllMyNotificationsAsRead(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Đã đánh dấu tất cả là đã đọc"})
 }
 
-// 🔹 LẤY TẤT CẢ THÔNG BÁO CHO ADMIN
+// ---------------- ADMIN ----------------
+
+// Lấy tất cả thông báo admin
 func GetAllNotifications(c *gin.Context) {
 	var notifications []models.Notification
-
-	// Lấy tất cả thông báo, sắp xếp mới nhất trước
 	config.DB.Order("created_at DESC").Find(&notifications)
-
-	c.JSON(http.StatusOK, gin.H{
-		"data": notifications,
-	})
+	c.JSON(http.StatusOK, gin.H{"data": notifications})
 }
 
-// 🔹 LẤY THÔNG BÁO THEO LOẠI ACTION
+// Lấy thông báo theo action
 func GetNotificationsByAction(c *gin.Context) {
-	action := c.Query("action") // ví dụ: ?action=favorite
-
+	action := c.Query("action")
 	if action == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Thiếu tham số action"})
 		return
@@ -75,13 +73,10 @@ func GetNotificationsByAction(c *gin.Context) {
 
 	var notifications []models.Notification
 	config.DB.Where("action = ?", action).Order("created_at DESC").Find(&notifications)
-
-	c.JSON(http.StatusOK, gin.H{
-		"data": notifications,
-	})
+	c.JSON(http.StatusOK, gin.H{"data": notifications})
 }
 
-// 🔹 ĐÁNH DẤU 1 THÔNG BÁO ĐÃ ĐỌC
+// Đánh dấu 1 thông báo admin đã đọc
 func MarkNotificationAsRead(c *gin.Context) {
 	id := c.Param("id")
 
@@ -97,7 +92,7 @@ func MarkNotificationAsRead(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Đã đánh dấu đã đọc"})
 }
 
-// 🔹 ĐÁNH DẤU TẤT CẢ LÀ ĐÃ ĐỌC
+// Đánh dấu tất cả admin đã đọc
 func MarkAllAsRead(c *gin.Context) {
 	config.DB.Model(&models.Notification{}).
 		Where("is_read = ?", false).
@@ -106,16 +101,13 @@ func MarkAllAsRead(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Đã đánh dấu tất cả là đã đọc"})
 }
 
-// 🔹 XÓA THÔNG BÁO
+// Xóa thông báo
 func DeleteNotification(c *gin.Context) {
 	id := c.Param("id")
-
 	result := config.DB.Delete(&models.Notification{}, "id = ?", id)
-
 	if result.RowsAffected == 0 {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy thông báo để xóa"})
 		return
 	}
-
 	c.JSON(http.StatusOK, gin.H{"message": "Đã xóa thông báo"})
 }

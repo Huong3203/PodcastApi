@@ -116,7 +116,7 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 	// ---------------- OTHER ----------------
 	r.GET("/health", controllers.HealthCheck)
 
-	// 🔹 Các WebSocket routes
+	// ---------------- WEBSOCKET ----------------
 	r.GET("/ws/document/:id", ws.HandleDocumentWebSocket)
 	r.GET("/ws/status", ws.HandleGlobalWebSocket)
 

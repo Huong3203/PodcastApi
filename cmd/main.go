@@ -24,7 +24,8 @@ func main() {
 	// Connect MySQL
 	config.ConnectDB()
 
-	go ws.SendNotification()
+	// Goroutine chạy nền để gửi thông báo đến clients
+	go ws.HandleNotificationMessages()
 
 	// Setup Gin
 	r := gin.Default()

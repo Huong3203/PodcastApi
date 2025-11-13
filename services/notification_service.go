@@ -9,7 +9,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// Hàm tạo + lưu thông báo (và gửi real-time nếu có WebSocket)
+// Tạo + lưu thông báo + gửi realtime
 func CreateNotification(userID, podcastID, action, message string) error {
 	noti := models.Notification{
 		ID:        uuid.New().String(),
@@ -28,6 +28,5 @@ func CreateNotification(userID, podcastID, action, message string) error {
 
 	// Gửi realtime đến frontend (qua WebSocket)
 	ws.SendNotification(noti)
-
 	return nil
 }

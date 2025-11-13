@@ -8,16 +8,14 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-var notificationClients = make(map[*websocket.Conn]string) // map[conn]userID
-var notificationBroadcast = make(chan models.Notification)
+var notificationClients = make(map[*websocket.Conn]string)      // map[conn]userID
+var notificationBroadcast = make(chan models.Notification, 100) // buffered channel
 
 var notificationUpgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool {
-		return true
-	},
+	CheckOrigin: func(r *http.Request) bool { return true },
 }
 
-// ⚡ Kết nối WS thông báo
+// Kết nối WS thông báo
 func HandleNotificationWS(w http.ResponseWriter, r *http.Request) {
 	userID := r.URL.Query().Get("user_id")
 	if userID == "" {
@@ -46,7 +44,7 @@ func HandleNotificationWS(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// ⚡ Luồng xử lý gửi thông báo
+// Luồng gửi notification
 func HandleNotificationMessages() {
 	for {
 		noti := <-notificationBroadcast
@@ -63,7 +61,7 @@ func HandleNotificationMessages() {
 	}
 }
 
-// ⚡ Hàm public cho controller gọi
+// Hàm public cho controller gọi
 func SendNotification(noti models.Notification) {
 	notificationBroadcast <- noti
 }
