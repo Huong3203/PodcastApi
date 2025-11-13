@@ -11,9 +11,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// -------------------------------------------------------
-// ✅ LƯU LỊCH SỬ NGHE
-// -------------------------------------------------------
+// LƯU LỊCH SỬ NGHE
 func LuuLichSuNghe(c *gin.Context) {
 	var body struct {
 		PodcastID string `json:"podcast_id"`
@@ -55,9 +53,7 @@ func LuuLichSuNghe(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Đã lưu lịch sử nghe"})
 }
 
-// -------------------------------------------------------
-// ✅ YÊU THÍCH PODCAST
-// -------------------------------------------------------
+// YÊU THÍCH PODCAST
 func ToggleYeuThichPodcast(c *gin.Context) {
 	podcastID := c.Param("id")
 	userID := c.GetString("user_id")
@@ -88,9 +84,7 @@ func ToggleYeuThichPodcast(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Đã bỏ yêu thích"})
 }
 
-// -------------------------------------------------------
-// ✅ LƯU PODCAST VÀO THƯ VIỆN
-// -------------------------------------------------------
+// LƯU PODCAST VÀO THƯ VIỆN
 func ToggleLuuPodcast(c *gin.Context) {
 	podcastID := c.Param("id")
 	userID := c.GetString("user_id")
@@ -121,9 +115,7 @@ func ToggleLuuPodcast(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Đã bỏ lưu"})
 }
 
-// -------------------------------------------------------
-// ✅ LẤY DANH SÁCH YÊU THÍCH CỦA NGƯỜI DÙNG
-// -------------------------------------------------------
+// LẤY DANH SÁCH YÊU THÍCH CỦA NGƯỜI DÙNG
 func GetMyFavoritePodcasts(c *gin.Context) {
 	userID := c.GetString("user_id")
 
@@ -139,9 +131,7 @@ func GetMyFavoritePodcasts(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": result})
 }
 
-// -------------------------------------------------------
-// ✅ LẤY DANH SÁCH ĐÃ LƯU
-// -------------------------------------------------------
+// LẤY DANH SÁCH ĐÃ LƯU
 func GetMySavedPodcasts(c *gin.Context) {
 	userID := c.GetString("user_id")
 
@@ -157,9 +147,7 @@ func GetMySavedPodcasts(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": result})
 }
 
-// -------------------------------------------------------
-// ✅ LẤY LỊCH SỬ NGHE
-// -------------------------------------------------------
+// LẤY LỊCH SỬ NGHE
 func GetMyListeningHistory(c *gin.Context) {
 	userID := c.GetString("user_id")
 

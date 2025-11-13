@@ -11,9 +11,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// ==========================
 // 🔹 Thêm đánh giá cho podcast
-// ==========================
 func AddPodcastRating(c *gin.Context) {
 	db := config.DB
 	userID := c.GetString("user_id")
@@ -51,9 +49,8 @@ func AddPodcastRating(c *gin.Context) {
 	})
 }
 
-// ==========================
 // 🔹 Lấy tất cả đánh giá của podcast
-// ==========================
+
 func GetPodcastRatings(c *gin.Context) {
 	db := config.DB
 	podcastID := c.Param("id")
@@ -87,9 +84,7 @@ func GetPodcastRatings(c *gin.Context) {
 	})
 }
 
-// ==========================
 // 🔹 Thống kê đánh giá cho admin
-// ==========================
 func GetAdminRatingsStats(c *gin.Context) {
 	role, _ := c.Get("vai_tro")
 	if role != "admin" {
@@ -113,5 +108,40 @@ func GetAdminRatingsStats(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"total_ratings": totalRatings,
 		"avg_rating":    avgScore,
+	})
+}
+
+// 🔹 Lấy podcast nổi bật (hiển thị trang chủ)
+
+func GetFeaturedPodcasts(c *gin.Context) {
+	db := config.DB
+
+	type PodcastWithStats struct {
+		models.Podcast
+		AvgRating  float64 `json:"avg_rating"`
+		TotalVotes int64   `json:"total_votes"`
+	}
+
+	var podcasts []PodcastWithStats
+
+	// Truy vấn podcast có điểm trung bình cao nhất
+	// Giới hạn top 5 podcast
+	if err := db.Table("podcasts p").
+		Select(`
+			p.*, 
+			COALESCE(AVG(d.sao), 0) AS avg_rating, 
+			COUNT(d.id) AS total_votes
+		`).
+		Joins("LEFT JOIN danh_gias d ON d.podcast_id = p.id").
+		Group("p.id").
+		Order("avg_rating DESC, total_votes DESC").
+		Limit(5).
+		Scan(&podcasts).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể lấy podcast nổi bật"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"featured_podcasts": podcasts,
 	})
 }

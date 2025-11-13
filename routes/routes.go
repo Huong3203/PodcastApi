@@ -41,9 +41,7 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 		admin.POST("/podcasts", controllers.CreatePodcastWithUpload)
 		admin.PUT("/podcasts/:id", controllers.UpdatePodcast)
 		admin.GET("/stats", controllers.GetAdminStats)
-
 		admin.GET("/ratings/stats", controllers.GetAdminRatingsStats)
-
 		admin.GET("/users", controllers.GetAllUsers)
 		admin.PATCH("/users/:id/role", controllers.UpdateUserRole)
 		admin.PATCH("/users/:id/toggle-active", controllers.ToggleUserActivation)
@@ -54,7 +52,6 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 	{
 		category.GET("/", controllers.GetDanhMucs)
 		category.GET("/:id", controllers.GetDanhMucByID)
-
 		adminCategory := category.Group("/")
 		adminCategory.Use(middleware.AuthMiddleware())
 		{
@@ -72,6 +69,9 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 		publicPodcast.GET("/:id", controllers.GetPodcastByID)
 		publicPodcast.GET("/disabled", controllers.GetDisabledPodcasts)
 		publicPodcast.GET("/:id/ratings", controllers.GetPodcastRatings)
+		publicPodcast.GET("/featured", controllers.GetFeaturedPodcasts)
+		publicPodcast.GET("/:id/recommendations", controllers.GetRecommendedPodcasts)
+
 	}
 
 	protectedPodcast := api.Group("/podcasts")
