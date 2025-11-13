@@ -61,7 +61,7 @@ func SummarizeText(text string) (string, error) {
 	5. Giọng văn trung tính, nhẹ nhàng, phù hợp để đọc lên
 	6. Không sử dụng markdown, không in đậm, không in nghiêng, chỉ trả về văn bản thuần tuý
 	7. Không bình luận, không giải thích, chỉ trả về nội dung tóm tắt phù hợp để chuyển thành audio podcast
-	8. Có thể bắt đầu bằng câu "Ở podcast này chúng ta sẽ cùng tìm hiểu về..." để rõ ràng hơn
+	8. Có thể bắt đầu bằng câu "Chào mừng bạn đến sonify, trong tập này..." để rõ ràng hơn
 	Đoạn văn bản cần tóm tắt:`
 
 	fullPrompt := prompt + "\n\n" + text
