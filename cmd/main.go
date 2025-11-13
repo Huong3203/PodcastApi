@@ -8,6 +8,7 @@ import (
 
 	"github.com/Huong3203/APIPodcast/config"
 	"github.com/Huong3203/APIPodcast/routes"
+	"github.com/Huong3203/APIPodcast/ws"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -22,6 +23,8 @@ func main() {
 
 	// Connect MySQL
 	config.ConnectDB()
+
+	go ws.SendNotification()
 
 	// Setup Gin
 	r := gin.Default()

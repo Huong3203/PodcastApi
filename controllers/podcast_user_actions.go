@@ -1,11 +1,13 @@
 package controllers
 
 import (
+	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/Huong3203/APIPodcast/config"
 	"github.com/Huong3203/APIPodcast/models"
+	"github.com/Huong3203/APIPodcast/services"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -30,7 +32,6 @@ func LuuLichSuNghe(c *gin.Context) {
 	}
 
 	var history models.LichSuNghe
-
 	err := config.DB.Where("nguoi_dung_id = ? AND podcast_id = ?", userID, body.PodcastID).
 		First(&history).Error
 
@@ -50,6 +51,12 @@ func LuuLichSuNghe(c *gin.Context) {
 		})
 	}
 
+	// 🔹 Tạo thông báo (nếu muốn ghi lại lịch sử nghe)
+	message := fmt.Sprintf("Người dùng đã nghe podcast %s", body.PodcastID)
+	if err := services.CreateNotification(userID, body.PodcastID, "listened", message); err != nil {
+		fmt.Println("Lỗi khi tạo thông báo:", err)
+	}
+
 	c.JSON(http.StatusOK, gin.H{"message": "Đã lưu lịch sử nghe"})
 }
 
@@ -59,12 +66,10 @@ func ToggleYeuThichPodcast(c *gin.Context) {
 	userID := c.GetString("user_id")
 
 	var fav models.PodcastYeuThich
+	err := config.DB.Where("nguoi_dung_id = ? AND podcast_id = ?", userID, podcastID).First(&fav).Error
 
-	err := config.DB.Where("nguoi_dung_id = ? AND podcast_id = ?", userID, podcastID).
-		First(&fav).Error
-
-	// Chưa yêu thích → thêm
 	if err == gorm.ErrRecordNotFound {
+		// Thêm yêu thích
 		fav = models.PodcastYeuThich{
 			ID:          uuid.New().String(),
 			NguoiDungID: userID,
@@ -73,14 +78,24 @@ func ToggleYeuThichPodcast(c *gin.Context) {
 		config.DB.Create(&fav)
 		config.DB.Model(&models.Podcast{}).Where("id = ?", podcastID).
 			UpdateColumn("luot_yeu_thich", gorm.Expr("luot_yeu_thich + 1"))
+
+		// 🔹 Tạo thông báo realtime
+		message := fmt.Sprintf("Người dùng %s đã yêu thích podcast %s", userID, podcastID)
+		services.CreateNotification(userID, podcastID, "favorite", message)
+
 		c.JSON(http.StatusOK, gin.H{"message": "Đã yêu thích"})
 		return
 	}
 
-	// Đã yêu thích → bỏ
+	// Bỏ yêu thích
 	config.DB.Delete(&fav)
 	config.DB.Model(&models.Podcast{}).Where("id = ?", podcastID).
 		UpdateColumn("luot_yeu_thich", gorm.Expr("luot_yeu_thich - 1"))
+
+	// 🔹 Tạo thông báo realtime
+	message := fmt.Sprintf("Người dùng %s đã bỏ yêu thích podcast %s", userID, podcastID)
+	services.CreateNotification(userID, podcastID, "unfavorite", message)
+
 	c.JSON(http.StatusOK, gin.H{"message": "Đã bỏ yêu thích"})
 }
 
@@ -90,12 +105,10 @@ func ToggleLuuPodcast(c *gin.Context) {
 	userID := c.GetString("user_id")
 
 	var save models.PodcastLuu
+	err := config.DB.Where("nguoi_dung_id = ? AND podcast_id = ?", userID, podcastID).First(&save).Error
 
-	err := config.DB.Where("nguoi_dung_id = ? AND podcast_id = ?", userID, podcastID).
-		First(&save).Error
-
-	// Chưa lưu → lưu
 	if err == gorm.ErrRecordNotFound {
+		// Lưu podcast
 		save = models.PodcastLuu{
 			ID:          uuid.New().String(),
 			NguoiDungID: userID,
@@ -104,14 +117,24 @@ func ToggleLuuPodcast(c *gin.Context) {
 		config.DB.Create(&save)
 		config.DB.Model(&models.Podcast{}).Where("id = ?", podcastID).
 			UpdateColumn("luot_luu", gorm.Expr("luot_luu + 1"))
+
+		// 🔹 Tạo thông báo realtime
+		message := fmt.Sprintf("Người dùng %s đã lưu podcast %s vào thư viện", userID, podcastID)
+		services.CreateNotification(userID, podcastID, "saved", message)
+
 		c.JSON(http.StatusOK, gin.H{"message": "Đã lưu podcast"})
 		return
 	}
 
-	// Đã lưu → bỏ lưu
+	// Bỏ lưu podcast
 	config.DB.Delete(&save)
 	config.DB.Model(&models.Podcast{}).Where("id = ?", podcastID).
 		UpdateColumn("luot_luu", gorm.Expr("luot_luu - 1"))
+
+	// 🔹 Tạo thông báo realtime
+	message := fmt.Sprintf("Người dùng %s đã bỏ lưu podcast %s", userID, podcastID)
+	services.CreateNotification(userID, podcastID, "unsaved", message)
+
 	c.JSON(http.StatusOK, gin.H{"message": "Đã bỏ lưu"})
 }
 

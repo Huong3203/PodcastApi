@@ -137,6 +137,12 @@ func UploadDocument(c *gin.Context) {
 		"NgayXuLyXong": &now,
 	})
 
+	// 🔹 Tạo thông báo realtime
+	message := fmt.Sprintf("Người dùng %s đã tải lên tài liệu: %s", userID, doc.TenFileGoc)
+	if err := services.CreateNotification(userID, doc.ID, "upload_document", message); err != nil {
+		fmt.Println("Lỗi khi tạo thông báo:", err)
+	}
+
 	ws.SendStatusUpdate(id, "Hoàn thành", 100, "")
 	ws.BroadcastDocumentListChanged()
 

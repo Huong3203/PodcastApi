@@ -260,6 +260,12 @@ func CreatePodcastWithUpload(c *gin.Context) {
 		return
 	}
 
+	// 🔹 Tạo thông báo realtime
+	message := fmt.Sprintf("Người dùng %s đã tạo podcast: %s", userID, tieuDe)
+	if err := services.CreateNotification(userID, podcast.ID, "create_podcast", message); err != nil {
+		fmt.Println("Lỗi khi tạo thông báo:", err)
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Tạo podcast thành công",
 		"podcast": podcast,
@@ -267,7 +273,6 @@ func CreatePodcastWithUpload(c *gin.Context) {
 }
 
 // Cập nhật podcast (Admin)
-
 func UpdatePodcast(c *gin.Context) {
 	if role, _ := c.Get("vai_tro"); role != "admin" {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Chỉ admin mới có quyền chỉnh sửa podcast"})
@@ -289,19 +294,26 @@ func UpdatePodcast(c *gin.Context) {
 	danhMucID := c.PostForm("danh_muc_id")
 	trangThai := c.PostForm("trang_thai")
 
-	if tieuDe != "" {
+	changes := []string{}
+
+	if tieuDe != "" && tieuDe != podcast.TieuDe {
+		changes = append(changes, fmt.Sprintf("tiêu đề: %s → %s", podcast.TieuDe, tieuDe))
 		podcast.TieuDe = tieuDe
 	}
-	if moTa != "" {
+	if moTa != "" && moTa != podcast.MoTa {
+		changes = append(changes, fmt.Sprintf("mô tả"))
 		podcast.MoTa = moTa
 	}
-	if theTag != "" {
+	if theTag != "" && theTag != podcast.TheTag {
+		changes = append(changes, fmt.Sprintf("tag"))
 		podcast.TheTag = theTag
 	}
-	if danhMucID != "" {
+	if danhMucID != "" && danhMucID != podcast.DanhMucID {
+		changes = append(changes, fmt.Sprintf("danh mục"))
 		podcast.DanhMucID = danhMucID
 	}
-	if trangThai != "" {
+	if trangThai != "" && trangThai != podcast.TrangThai {
+		changes = append(changes, fmt.Sprintf("trạng thái: %s → %s", podcast.TrangThai, trangThai))
 		podcast.TrangThai = trangThai
 		if trangThai == "Bật" {
 			now := time.Now()
@@ -312,6 +324,7 @@ func UpdatePodcast(c *gin.Context) {
 	if hinhAnhFile, err := c.FormFile("hinh_anh_dai_dien"); err == nil {
 		if imageURL, err := utils.UploadImageToSupabase(hinhAnhFile, uuid.New().String()); err == nil {
 			podcast.HinhAnhDaiDien = imageURL
+			changes = append(changes, "hình ảnh đại diện")
 		} else {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể upload hình ảnh"})
 			return
@@ -321,6 +334,14 @@ func UpdatePodcast(c *gin.Context) {
 	if err := db.Save(&podcast).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể cập nhật podcast"})
 		return
+	}
+
+	// 🔹 Tạo thông báo realtime
+	if len(changes) > 0 {
+		message := fmt.Sprintf("Podcast %s đã được cập nhật: %v", podcast.TieuDe, changes)
+		if err := services.CreateNotification("", podcast.ID, "update_podcast", message); err != nil {
+			fmt.Println("Lỗi khi tạo thông báo:", err)
+		}
 	}
 
 	db.Preload("TaiLieu.NguoiDung").Preload("DanhMuc").First(&podcast, "id = ?", podcastID)

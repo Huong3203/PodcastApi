@@ -2,11 +2,13 @@ package controllers
 
 import (
 	"database/sql"
+	"fmt"
 	"net/http"
 	"strconv"
 
 	"github.com/Huong3203/APIPodcast/config"
 	"github.com/Huong3203/APIPodcast/models"
+	"github.com/Huong3203/APIPodcast/services"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
@@ -41,6 +43,12 @@ func AddPodcastRating(c *gin.Context) {
 	if err := db.Create(&rating).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể thêm đánh giá"})
 		return
+	}
+
+	// 🔹 Tạo thông báo cho chủ podcast
+	message := fmt.Sprintf("Người dùng đã đánh giá %d sao cho podcast %s", sao, podcastID)
+	if err := services.CreateNotification(userID, podcastID, "add_rating", message); err != nil {
+		fmt.Println("❌ Lỗi khi tạo thông báo:", err)
 	}
 
 	c.JSON(http.StatusOK, gin.H{
