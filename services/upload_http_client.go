@@ -91,3 +91,16 @@ func CallUploadDocumentAPI(file *multipart.FileHeader, userID string, token stri
 
 	return result, nil
 }
+
+// GenerateSummary nhận nội dung text và trả về tóm tắt
+func GenerateSummary(content string) (string, error) {
+	if content == "" {
+		return "", fmt.Errorf("nội dung rỗng")
+	}
+
+	// TODO: Thay thế bằng logic tóm tắt thực tế (OpenAI, GPT, hoặc thuật toán tự viết)
+	if len(content) > 200 {
+		return content[:200] + "...", nil
+	}
+	return content, nil
+}

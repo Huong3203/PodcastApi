@@ -96,6 +96,7 @@ func UploadDocument(c *gin.Context) {
 
 	fmt.Println("Nội dung đã làm sạch:", cleanedContent)
 
+	// Cập nhật nội dung trích xuất
 	db.Model(&doc).Updates(map[string]interface{}{
 		"TrangThai":        "Đã trích xuất",
 		"NoiDungTrichXuat": cleanedContent,
@@ -103,6 +104,22 @@ func UploadDocument(c *gin.Context) {
 	ws.SendStatusUpdate(id, "Đã trích xuất", 40, "")
 	ws.BroadcastDocumentListChanged()
 
+	// ⭐ Tạo tóm tắt
+	ws.SendStatusUpdate(id, "Đang tạo tóm tắt...", 45, "")
+	summary, err := services.GenerateSummary(cleanedContent)
+	if err != nil {
+		ws.SendStatusUpdate(id, "Lỗi tạo tóm tắt", 0, err.Error())
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể tạo tóm tắt", "details": err.Error()})
+		return
+	}
+
+	db.Model(&doc).Updates(map[string]interface{}{
+		"TomTat": summary,
+	})
+	ws.SendStatusUpdate(id, "Đã tạo tóm tắt", 47, "")
+	ws.BroadcastDocumentListChanged()
+
+	// Tạo audio
 	ws.SendStatusUpdate(id, "Đang tạo audio...", 50, "")
 	voice := c.PostForm("voice")
 	if voice == "" {
@@ -151,6 +168,7 @@ func UploadDocument(c *gin.Context) {
 		"message":   "Tải lên thành công",
 		"tai_lieu":  doc,
 		"audio_url": audioURL,
+		"tom_tat":   doc.TomTat, // trả tóm tắt cho client
 	})
 }
 
