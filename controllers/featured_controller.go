@@ -9,7 +9,6 @@ import (
 )
 
 // ========================= PODCAST NỔI BẬT ========================= //
-
 func GetFeaturedPodcasts(c *gin.Context) {
 	db := config.DB
 
@@ -21,20 +20,15 @@ func GetFeaturedPodcasts(c *gin.Context) {
 
 	var podcasts []PodcastWithStats
 
-	// ⭐ Lấy top 5 podcast có điểm trung bình cao nhất
-	if err := db.Table("podcasts p").
-		Select(`
-			p.*,
-			COALESCE(AVG(d.sao), 0) AS avg_rating,
-			COUNT(d.id) AS total_votes
-		`).
-		Joins("LEFT JOIN danh_gias d ON d.podcast_id = p.id").
-		Where("p.trang_thai = ?", "Bật").
-		Group("p.id").
+	if err := db.Model(&models.Podcast{}).
+		Select("podcasts.*, COALESCE(AVG(danh_gias.sao),0) AS avg_rating, COUNT(danh_gias.id) AS total_votes").
+		Joins("LEFT JOIN danh_gias ON danh_gias.podcast_id = podcasts.id").
+		Where("podcasts.trang_thai = ?", "Bật").
+		Group("podcasts.id").
 		Order("avg_rating DESC, total_votes DESC").
 		Limit(5).
 		Scan(&podcasts).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể lấy podcast nổi bật"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể lấy podcast nổi bật", "detail": err.Error()})
 		return
 	}
 
@@ -44,9 +38,18 @@ func GetFeaturedPodcasts(c *gin.Context) {
 }
 
 // ========================= ĐÁNH GIÁ NỔI BẬT ========================= //
-
 func GetFeaturedRatings(c *gin.Context) {
 	db := config.DB
+
+	var ratings []models.DanhGia
+
+	if err := db.Preload("User").
+		Order("sao DESC, ngay_tao DESC").
+		Limit(10).
+		Find(&ratings).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể lấy đánh giá nổi bật", "detail": err.Error()})
+		return
+	}
 
 	type RatingWithUser struct {
 		models.DanhGia
@@ -54,24 +57,16 @@ func GetFeaturedRatings(c *gin.Context) {
 		Avatar   string `json:"avatar"`
 	}
 
-	var ratings []RatingWithUser
-
-	// ⭐ Lấy 10 đánh giá nổi bật (5 sao hoặc mới nhất)
-	if err := db.Table("danh_gias d").
-		Select(`
-			d.*,
-			u.ho_ten AS user_name,
-			u.avatar AS avatar
-		`).
-		Joins("LEFT JOIN nguoi_dungs u ON u.id = d.user_id").
-		Order("d.sao DESC, d.ngay_tao DESC").
-		Limit(10).
-		Scan(&ratings).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể lấy đánh giá nổi bật"})
-		return
+	var result []RatingWithUser
+	for _, r := range ratings {
+		result = append(result, RatingWithUser{
+			DanhGia:  r,
+			UserName: r.User.HoTen,
+			Avatar:   r.User.Avatar,
+		})
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"featured_ratings": ratings,
+		"featured_ratings": result,
 	})
 }
