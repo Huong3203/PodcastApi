@@ -143,11 +143,13 @@ func GetMyFavoritePodcasts(c *gin.Context) {
 	userID := c.GetString("user_id")
 
 	var list []models.PodcastYeuThich
-	config.DB.Preload("Podcast").Where("nguoi_dung_id = ?", userID).
+	config.DB.Preload("Podcast").Preload("Podcast.TaiLieu").Where("nguoi_dung_id = ?", userID).
 		Order("ngay_thich DESC").Find(&list)
 
 	var result []models.Podcast
 	for _, item := range list {
+		// Gán TomTat ra root để frontend không cần nested
+		item.Podcast.TomTat = item.Podcast.TaiLieu.TomTat
 		result = append(result, item.Podcast)
 	}
 
@@ -159,11 +161,12 @@ func GetMySavedPodcasts(c *gin.Context) {
 	userID := c.GetString("user_id")
 
 	var list []models.PodcastLuu
-	config.DB.Preload("Podcast").Where("nguoi_dung_id = ?", userID).
+	config.DB.Preload("Podcast").Preload("Podcast.TaiLieu").Where("nguoi_dung_id = ?", userID).
 		Order("ngay_luu DESC").Find(&list)
 
 	var result []models.Podcast
 	for _, s := range list {
+		s.Podcast.TomTat = s.Podcast.TaiLieu.TomTat
 		result = append(result, s.Podcast)
 	}
 
@@ -175,8 +178,13 @@ func GetMyListeningHistory(c *gin.Context) {
 	userID := c.GetString("user_id")
 
 	var list []models.LichSuNghe
-	config.DB.Preload("Podcast").Where("nguoi_dung_id = ?", userID).
+	config.DB.Preload("Podcast").Preload("Podcast.TaiLieu").Where("nguoi_dung_id = ?", userID).
 		Order("ngay_nghe DESC").Find(&list)
+
+	// Gán TomTat
+	for i := range list {
+		list[i].Podcast.TomTat = list[i].Podcast.TaiLieu.TomTat
+	}
 
 	c.JSON(http.StatusOK, gin.H{"data": list})
 }

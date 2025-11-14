@@ -20,11 +20,14 @@ type Podcast struct {
 	TheTag         string     `gorm:"type:varchar(255)" json:"the_tag"`
 	LuotXem        int        `gorm:"type:int;default:0" json:"luot_xem"`
 
-	//  2 trường mới
+	// 2 trường thống kê
 	LuotLuu      int `gorm:"type:int;default:0" json:"luot_luu"`
 	LuotYeuThich int `gorm:"type:int;default:0" json:"luot_yeu_thich"`
 
 	// Quan hệ
 	TaiLieu TaiLieu `gorm:"foreignKey:TailieuID;references:ID" json:"tailieu"`
 	DanhMuc DanhMuc `gorm:"foreignKey:DanhMucID;references:ID" json:"danhmuc"`
+
+	// Lấy tóm tắt từ TaiLieu để hiển thị trực tiếp trong Podcast
+	TomTat string `gorm:"-" json:"tom_tat"` // "-" nghĩa là GORM không map vào DB
 }

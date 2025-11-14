@@ -16,8 +16,30 @@ import (
 	"gorm.io/gorm"
 )
 
+// ======================= Helper =======================
+func AttachSummary(db *gorm.DB, podcasts []models.Podcast) {
+	for i := range podcasts {
+		if podcasts[i].TailieuID != "" {
+			var tl models.TaiLieu
+			if err := db.First(&tl, "id = ?", podcasts[i].TailieuID).Error; err == nil {
+				podcasts[i].TomTat = tl.TomTat
+			}
+		}
+	}
+}
+
+func FormatSecondsToHHMMSS(seconds int) string {
+	h := seconds / 3600
+	m := (seconds % 3600) / 60
+	s := seconds % 60
+	return fmt.Sprintf("%02d:%02d:%02d", h, m, s)
+}
+
+// ======================= PUBLIC API =======================
+
 // Xem danh sách podcast
 func GetPodcast(c *gin.Context) {
+	db := config.DB
 	var podcasts []models.Podcast
 	var total int64
 
@@ -30,7 +52,7 @@ func GetPodcast(c *gin.Context) {
 	categoryID := c.Query("category")
 	sort := c.DefaultQuery("sort", "date")
 
-	query := config.DB.Model(&models.Podcast{})
+	query := db.Model(&models.Podcast{}).Preload("TaiLieu").Preload("DanhMuc")
 
 	// Nếu không phải admin → chỉ lấy podcast có trạng thái "Bật"
 	role, _ := c.Get("vai_tro")
@@ -43,7 +65,7 @@ func GetPodcast(c *gin.Context) {
 	}
 
 	if categoryID != "" {
-		query = query.Where("category_id = ?", categoryID)
+		query = query.Where("danh_muc_id = ?", categoryID)
 	}
 
 	if status != "" && role == "admin" {
@@ -58,11 +80,14 @@ func GetPodcast(c *gin.Context) {
 	// Sắp xếp
 	orderBy := "ngay_tao_ra DESC"
 	if sort == "views" {
-		orderBy = "views DESC"
+		orderBy = "luot_xem DESC"
 	}
 
 	query.Count(&total)
 	query.Order(orderBy).Offset(offset).Limit(limit).Find(&podcasts)
+
+	// Gán TomTat
+	AttachSummary(db, podcasts)
 
 	c.JSON(http.StatusOK, gin.H{
 		"data": podcasts,
@@ -77,6 +102,7 @@ func GetPodcast(c *gin.Context) {
 
 // Tìm kiếm podcast
 func SearchPodcast(c *gin.Context) {
+	db := config.DB
 	search := c.Query("q")
 	status := c.Query("trang_thai")
 
@@ -86,33 +112,34 @@ func SearchPodcast(c *gin.Context) {
 	}
 
 	var podcasts []models.Podcast
-	query := config.DB.Model(&models.Podcast{}).
+	query := db.Model(&models.Podcast{}).
 		Where("LOWER(tieu_de) LIKE ? OR LOWER(mo_ta) LIKE ? OR LOWER(the_tag) LIKE ?",
 			"%"+strings.ToLower(search)+"%",
 			"%"+strings.ToLower(search)+"%",
 			"%"+strings.ToLower(search)+"%",
-		)
+		).
+		Preload("TaiLieu").Preload("DanhMuc")
 
 	if status != "" {
 		query = query.Where("trang_thai = ?", status)
 	}
-
-	query = query.Preload("TaiLieu").Preload("DanhMuc")
 
 	if err := query.Find(&podcasts).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi khi tìm kiếm podcast"})
 		return
 	}
 
+	AttachSummary(db, podcasts)
 	c.JSON(http.StatusOK, gin.H{"data": podcasts})
 }
 
 // Xem chi tiết podcast
 func GetPodcastByID(c *gin.Context) {
+	db := config.DB
 	id := c.Param("id")
 	var podcast models.Podcast
 
-	if err := config.DB.First(&podcast, "id = ?", id).Error; err != nil {
+	if err := db.Preload("TaiLieu").Preload("DanhMuc").First(&podcast, "id = ?", id).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy podcast"})
 		} else {
@@ -122,12 +149,18 @@ func GetPodcastByID(c *gin.Context) {
 	}
 
 	// Tăng lượt xem
-	config.DB.Model(&podcast).UpdateColumn("luot_xem", gorm.Expr("luot_xem + ?", 1))
+	db.Model(&podcast).UpdateColumn("luot_xem", gorm.Expr("luot_xem + ?", 1))
+
+	// Gán TomTat
+	if podcast.TailieuID != "" {
+		podcast.TomTat = podcast.TaiLieu.TomTat
+	}
 
 	// Podcast liên quan
 	var related []models.Podcast
-	config.DB.Where("danh_muc_id = ? AND id != ?", podcast.DanhMucID, podcast.ID).
+	db.Preload("TaiLieu").Where("danh_muc_id = ? AND id != ?", podcast.DanhMucID, podcast.ID).
 		Order("ngay_tao_ra DESC").Limit(5).Find(&related)
+	AttachSummary(db, related)
 
 	c.JSON(http.StatusOK, gin.H{
 		"data":    podcast,
@@ -137,27 +170,18 @@ func GetPodcastByID(c *gin.Context) {
 
 // Lấy danh sách podcast đang tắt
 func GetDisabledPodcasts(c *gin.Context) {
+	db := config.DB
 	var podcasts []models.Podcast
 
-	if err := config.DB.
-		Where("trang_thai = ?", "Tắt").
-		Order("ngay_tao_ra DESC").
-		Find(&podcasts).Error; err != nil {
-
+	if err := db.Where("trang_thai = ?", "Tắt").Order("ngay_tao_ra DESC").Find(&podcasts).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":  "Lỗi khi lấy danh sách podcast bị tắt",
-			"detail": err.Error(), // hiện chi tiết lỗi để debug
+			"detail": err.Error(),
 		})
 		return
 	}
 
-	if len(podcasts) == 0 {
-		c.JSON(http.StatusOK, gin.H{
-			"message": "Không có podcast nào đang bị tắt",
-			"data":    []models.Podcast{},
-		})
-		return
-	}
+	AttachSummary(db, podcasts)
 
 	c.JSON(http.StatusOK, gin.H{
 		"count": len(podcasts),
@@ -165,11 +189,11 @@ func GetDisabledPodcasts(c *gin.Context) {
 	})
 }
 
-// Tạo podcast (yêu cầu đăng nhập)
+// Tạo podcast với upload tài liệu + audio
 func CreatePodcastWithUpload(c *gin.Context) {
 	role, _ := c.Get("vai_tro")
 	if role == nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Bạn phải đăng nhập để thực hiện hành động này"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Bạn phải đăng nhập"})
 		return
 	}
 
@@ -260,11 +284,8 @@ func CreatePodcastWithUpload(c *gin.Context) {
 		return
 	}
 
-	// 🔹 Tạo thông báo realtime
 	message := fmt.Sprintf("Người dùng %s đã tạo podcast: %s", userID, tieuDe)
-	if err := services.CreateNotification(userID, podcast.ID, "create_podcast", message); err != nil {
-		fmt.Println("Lỗi khi tạo thông báo:", err)
-	}
+	services.CreateNotification(userID, podcast.ID, "create_podcast", message)
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Tạo podcast thành công",
@@ -274,7 +295,8 @@ func CreatePodcastWithUpload(c *gin.Context) {
 
 // Cập nhật podcast (Admin)
 func UpdatePodcast(c *gin.Context) {
-	if role, _ := c.Get("vai_tro"); role != "admin" {
+	role, _ := c.Get("vai_tro")
+	if role != "admin" {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Chỉ admin mới có quyền chỉnh sửa podcast"})
 		return
 	}
@@ -336,15 +358,13 @@ func UpdatePodcast(c *gin.Context) {
 		return
 	}
 
-	// 🔹 Tạo thông báo realtime
 	if len(changes) > 0 {
 		message := fmt.Sprintf("Podcast %s đã được cập nhật: %v", podcast.TieuDe, changes)
-		if err := services.CreateNotification("", podcast.ID, "update_podcast", message); err != nil {
-			fmt.Println("Lỗi khi tạo thông báo:", err)
-		}
+		services.CreateNotification("", podcast.ID, "update_podcast", message)
 	}
 
-	db.Preload("TaiLieu.NguoiDung").Preload("DanhMuc").First(&podcast, "id = ?", podcastID)
+	db.Preload("TaiLieu").Preload("DanhMuc").First(&podcast, "id = ?", podcastID)
+	AttachSummary(db, []models.Podcast{podcast})
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Cập nhật podcast thành công",
@@ -352,13 +372,11 @@ func UpdatePodcast(c *gin.Context) {
 	})
 }
 
-//  Gợi ý podcast tương tự (recommendations)
-
+// Gợi ý podcast tương tự
 func GetRecommendedPodcasts(c *gin.Context) {
 	db := config.DB
 	podcastID := c.Param("id")
 
-	// Lấy podcast gốc để tìm danh mục
 	var current models.Podcast
 	if err := db.First(&current, "id = ?", podcastID).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy podcast"})
@@ -369,17 +387,13 @@ func GetRecommendedPodcasts(c *gin.Context) {
 		models.Podcast
 		AvgRating  float64 `json:"avg_rating"`
 		TotalVotes int64   `json:"total_votes"`
+		TomTat     string  `json:"tom_tat"`
 	}
 
 	var recommendations []PodcastWithStats
 
-	// Lấy các podcast cùng danh mục, khác ID hiện tại
 	if err := db.Table("podcasts p").
-		Select(`
-			p.*, 
-			COALESCE(AVG(d.sao), 0) AS avg_rating, 
-			COUNT(d.id) AS total_votes
-		`).
+		Select(`p.*, COALESCE(AVG(d.sao),0) AS avg_rating, COUNT(d.id) AS total_votes`).
 		Joins("LEFT JOIN danh_gias d ON d.podcast_id = p.id").
 		Where("p.danh_muc_id = ? AND p.id != ? AND p.trang_thai = ?", current.DanhMucID, current.ID, "Bật").
 		Group("p.id").
@@ -390,32 +404,31 @@ func GetRecommendedPodcasts(c *gin.Context) {
 		return
 	}
 
-	// Nếu không có cùng danh mục → fallback: lấy ngẫu nhiên 6 podcast nổi bật
+	// Gán TomTat
+	for i := range recommendations {
+		var tl models.TaiLieu
+		if err := db.First(&tl, "id = ?", recommendations[i].TailieuID).Error; err == nil {
+			recommendations[i].TomTat = tl.TomTat
+		}
+	}
+
+	// fallback nếu không có cùng danh mục
 	if len(recommendations) == 0 {
 		db.Table("podcasts p").
-			Select(`
-				p.*, 
-				COALESCE(AVG(d.sao), 0) AS avg_rating, 
-				COUNT(d.id) AS total_votes
-			`).
+			Select(`p.*, COALESCE(AVG(d.sao),0) AS avg_rating, COUNT(d.id) AS total_votes`).
 			Joins("LEFT JOIN danh_gias d ON d.podcast_id = p.id").
 			Where("p.id != ? AND p.trang_thai = ?", current.ID, "Bật").
 			Group("p.id").
 			Order("avg_rating DESC, total_votes DESC").
 			Limit(6).
 			Scan(&recommendations)
+		for i := range recommendations {
+			var tl models.TaiLieu
+			if err := db.First(&tl, "id = ?", recommendations[i].TailieuID).Error; err == nil {
+				recommendations[i].TomTat = tl.TomTat
+			}
+		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"data": recommendations,
-	})
-}
-
-// Format thời lượng
-
-func FormatSecondsToHHMMSS(seconds int) string {
-	h := seconds / 3600
-	m := (seconds % 3600) / 60
-	s := seconds % 60
-	return fmt.Sprintf("%02d:%02d:%02d", h, m, s)
+	c.JSON(http.StatusOK, gin.H{"data": recommendations})
 }
