@@ -24,12 +24,12 @@ func GetFeaturedPodcasts(c *gin.Context) {
 	// ⭐ Lấy top 5 podcast có điểm trung bình cao nhất
 	if err := db.Table("podcasts p").
 		Select(`
-			p.*, 
-			COALESCE(AVG(d.sao), 0) AS avg_rating, 
+			p.*,
+			COALESCE(AVG(d.sao), 0) AS avg_rating,
 			COUNT(d.id) AS total_votes
 		`).
 		Joins("LEFT JOIN danh_gias d ON d.podcast_id = p.id").
-		Where("p.trang_thai = 'Bật'").
+		Where("p.trang_thai = ?", "Bật").
 		Group("p.id").
 		Order("avg_rating DESC, total_votes DESC").
 		Limit(5).
@@ -56,15 +56,15 @@ func GetFeaturedRatings(c *gin.Context) {
 
 	var ratings []RatingWithUser
 
-	// ⭐ Lấy 10 đánh giá nổi bật (đánh giá 5 sao hoặc mới nhất)
+	// ⭐ Lấy 10 đánh giá nổi bật (5 sao hoặc mới nhất)
 	if err := db.Table("danh_gias d").
 		Select(`
-			d.*, 
+			d.*,
 			u.ho_ten AS user_name,
 			u.avatar AS avatar
 		`).
-		Joins("LEFT JOIN users u ON u.id = d.user_id").
-		Order("d.sao DESC, d.ngay_tao_ra DESC").
+		Joins("LEFT JOIN nguoi_dungs u ON u.id = d.user_id").
+		Order("d.sao DESC, d.ngay_tao DESC").
 		Limit(10).
 		Scan(&ratings).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể lấy đánh giá nổi bật"})
