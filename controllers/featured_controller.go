@@ -41,34 +41,45 @@ func GetFeaturedPodcasts(c *gin.Context) {
 func GetFeaturedRatings(c *gin.Context) {
 	db := config.DB
 
-	var ratings []models.DanhGia
-
-	// Preload User + Podcast + Podcast.Tailieu + Podcast.Danhmuc
+	// Lấy 10 đánh giá nổi bật nhất theo sao và ngày tạo
+	var ratings []models.FeaturedRating
 	if err := db.Preload("User").
 		Preload("Podcast").
-		Preload("Podcast.Tailieu").
-		Preload("Podcast.Danhmuc").
-		Order("sao DESC, ngay_tao DESC").
+		Preload("Podcast.TaiLieu").
+		Preload("Podcast.DanhMuc").
+		Order("sao DESC, featured_at DESC").
 		Limit(10).
 		Find(&ratings).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể lấy đánh giá nổi bật", "detail": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":  "Không thể lấy đánh giá nổi bật",
+			"detail": err.Error(),
+		})
 		return
 	}
 
+	// Chuẩn hóa dữ liệu trả về
 	type RatingWithUserAndPodcast struct {
-		models.DanhGia
-		UserName string          `json:"user_name"`
-		Avatar   string          `json:"avatar"`
-		Podcast  *models.Podcast `json:"podcast,omitempty"`
+		models.FeaturedRating
+		UserName       string      `json:"user_name"`
+		Avatar         string      `json:"avatar"`
+		PodcastTitle   string      `json:"podcast_title"`
+		PodcastImage   string      `json:"podcast_image"`
+		PodcastTag     string      `json:"podcast_tag"`
+		PodcastTailieu interface{} `json:"tailieu"`
+		PodcastDanhMuc interface{} `json:"danhmuc"`
 	}
 
 	var result []RatingWithUserAndPodcast
 	for _, r := range ratings {
 		result = append(result, RatingWithUserAndPodcast{
-			DanhGia:  r,
-			UserName: r.User.HoTen,
-			Avatar:   r.User.Avatar,
-			Podcast:  &r.Podcast, // gán luôn podcast
+			FeaturedRating: r,
+			UserName:       r.User.HoTen,
+			Avatar:         r.User.Avatar,
+			PodcastTitle:   r.Podcast.TieuDe,
+			PodcastImage:   r.Podcast.HinhAnhDaiDien,
+			PodcastTag:     r.Podcast.TheTag,
+			PodcastTailieu: r.Podcast.TaiLieu,
+			PodcastDanhMuc: r.Podcast.DanhMuc,
 		})
 	}
 
