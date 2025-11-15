@@ -11,3 +11,7 @@ type FeaturedPodcast struct {
 
 	Podcast Podcast `gorm:"foreignKey:PodcastID;references:ID" json:"podcast"`
 }
+
+func (FeaturedPodcast) TableName() string {
+	return "featured_podcast"
+}

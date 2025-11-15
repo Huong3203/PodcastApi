@@ -21,14 +21,22 @@ func GetFeaturedPodcasts(c *gin.Context) {
 	var podcasts []PodcastWithStats
 
 	if err := db.Model(&models.Podcast{}).
-		Select("podcasts.*, COALESCE(AVG(danh_gia.sao),0) AS avg_rating, COUNT(danh_gia.id) AS total_votes").
-		Joins("LEFT JOIN danh_gia ON danh_gias.podcast_id = podcasts.id").
+		Select(`
+			podcasts.*,
+			COALESCE(AVG(danh_gia.sao), 0) AS avg_rating,
+			COUNT(danh_gia.id) AS total_votes
+		`).
+		Joins("LEFT JOIN danh_gia ON danh_gia.podcast_id = podcasts.id").
 		Where("podcasts.trang_thai = ?", "Bật").
 		Group("podcasts.id").
 		Order("avg_rating DESC, total_votes DESC").
 		Limit(5).
 		Scan(&podcasts).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể lấy podcast nổi bật", "detail": err.Error()})
+
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":  "Không thể lấy podcast nổi bật",
+			"detail": err.Error(),
+		})
 		return
 	}
 
@@ -41,15 +49,17 @@ func GetFeaturedPodcasts(c *gin.Context) {
 func GetFeaturedRatings(c *gin.Context) {
 	db := config.DB
 
-	// Lấy 10 đánh giá nổi bật nhất theo sao và ngày tạo
 	var ratings []models.FeaturedRating
-	if err := db.Preload("User").
+
+	if err := db.Model(&models.FeaturedRating{}).
+		Preload("User").
 		Preload("Podcast").
 		Preload("Podcast.TaiLieu").
 		Preload("Podcast.DanhMuc").
-		Order("sao DESC, featured_at DESC").
+		Order("featured_rating.sao DESC, featured_rating.featured_at DESC").
 		Limit(10).
 		Find(&ratings).Error; err != nil {
+
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":  "Không thể lấy đánh giá nổi bật",
 			"detail": err.Error(),
@@ -57,7 +67,6 @@ func GetFeaturedRatings(c *gin.Context) {
 		return
 	}
 
-	// Chuẩn hóa dữ liệu trả về
 	type RatingWithUserAndPodcast struct {
 		models.FeaturedRating
 		UserName       string      `json:"user_name"`
@@ -70,6 +79,7 @@ func GetFeaturedRatings(c *gin.Context) {
 	}
 
 	var result []RatingWithUserAndPodcast
+
 	for _, r := range ratings {
 		result = append(result, RatingWithUserAndPodcast{
 			FeaturedRating: r,
