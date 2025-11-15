@@ -2,63 +2,82 @@ package controllers
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/Huong3203/APIPodcast/config"
 	"github.com/Huong3203/APIPodcast/models"
 	"github.com/gin-gonic/gin"
 )
 
-// ========================= PODCAST NỔI BẬT ========================= //
+// ==========================
+// 📌 LẤY DANH SÁCH PODCAST NỔI BẬT
+// ==========================
 func GetFeaturedPodcasts(c *gin.Context) {
 	db := config.DB
 
-	type PodcastWithStats struct {
-		models.Podcast
-		AvgRating  float64 `json:"avg_rating"`
-		TotalVotes int64   `json:"total_votes"`
-	}
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
+	offset := (page - 1) * limit
 
-	var podcasts []PodcastWithStats
+	var featured []models.FeaturedPodcast
+	var total int64
 
-	if err := db.Model(&models.Podcast{}).
-		Select(`
-			podcasts.*,
-			COALESCE(AVG(danh_gia.sao), 0) AS avg_rating,
-			COUNT(danh_gia.id) AS total_votes
-		`).
-		Joins("LEFT JOIN danh_gia ON danh_gia.podcast_id = podcasts.id").
-		Where("podcasts.trang_thai = ?", "Bật").
-		Group("podcasts.id").
-		Order("avg_rating DESC, total_votes DESC").
-		Limit(5).
-		Scan(&podcasts).Error; err != nil {
+	query := db.Model(&models.FeaturedPodcast{}).
+		Preload("Podcast").
+		Preload("Podcast.DanhMuc").
+		Preload("Podcast.TaiLieu")
+
+	// Đếm tổng số
+	query.Count(&total)
+
+	// Lấy dữ liệu
+	if err := query.
+		Order("featured_at DESC").
+		Offset(offset).
+		Limit(limit).
+		Find(&featured).Error; err != nil {
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":  "Không thể lấy podcast nổi bật",
-			"detail": err.Error(),
+			"error": "Không thể lấy danh sách podcast nổi bật",
 		})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"featured_podcasts": podcasts,
+		"data": featured,
+		"pagination": gin.H{
+			"page":        page,
+			"limit":       limit,
+			"total":       total,
+			"total_pages": (total + int64(limit) - 1) / int64(limit),
+		},
 	})
 }
 
-// ========================= ĐÁNH GIÁ NỔI BẬT ========================= //
+// 📌 LẤY DANH SÁCH ĐÁNH GIÁ NỔI BẬT
+// ==========================
 func GetFeaturedRatings(c *gin.Context) {
 	db := config.DB
 
-	var ratings []models.FeaturedRating
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
+	offset := (page - 1) * limit
 
-	if err := db.Model(&models.FeaturedRating{}).
+	var featured []models.FeaturedRating
+	var total int64
+
+	query := db.Model(&models.FeaturedRating{}).
 		Preload("User").
 		Preload("Podcast").
-		Preload("Podcast.TaiLieu").
-		Preload("Podcast.DanhMuc").
-		Order("featured_rating.sao DESC, featured_rating.featured_at DESC").
-		Limit(10).
-		Find(&ratings).Error; err != nil {
+		Preload("Podcast.DanhMuc")
+
+	query.Count(&total)
+
+	if err := query.
+		Order("featured_at DESC").
+		Offset(offset).
+		Limit(limit).
+		Find(&featured).Error; err != nil {
 
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":  "Không thể lấy đánh giá nổi bật",
@@ -67,33 +86,13 @@ func GetFeaturedRatings(c *gin.Context) {
 		return
 	}
 
-	type RatingWithUserAndPodcast struct {
-		models.FeaturedRating
-		UserName       string      `json:"user_name"`
-		Avatar         string      `json:"avatar"`
-		PodcastTitle   string      `json:"podcast_title"`
-		PodcastImage   string      `json:"podcast_image"`
-		PodcastTag     string      `json:"podcast_tag"`
-		PodcastTailieu interface{} `json:"tailieu"`
-		PodcastDanhMuc interface{} `json:"danhmuc"`
-	}
-
-	var result []RatingWithUserAndPodcast
-
-	for _, r := range ratings {
-		result = append(result, RatingWithUserAndPodcast{
-			FeaturedRating: r,
-			UserName:       r.User.HoTen,
-			Avatar:         r.User.Avatar,
-			PodcastTitle:   r.Podcast.TieuDe,
-			PodcastImage:   r.Podcast.HinhAnhDaiDien,
-			PodcastTag:     r.Podcast.TheTag,
-			PodcastTailieu: r.Podcast.TaiLieu,
-			PodcastDanhMuc: r.Podcast.DanhMuc,
-		})
-	}
-
 	c.JSON(http.StatusOK, gin.H{
-		"featured_ratings": result,
+		"data": featured,
+		"pagination": gin.H{
+			"page":        page,
+			"limit":       limit,
+			"total":       total,
+			"total_pages": (total + int64(limit) - 1) / int64(limit),
+		},
 	})
 }

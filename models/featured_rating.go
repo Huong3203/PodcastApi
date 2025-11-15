@@ -14,7 +14,3 @@ type FeaturedRating struct {
 	User    NguoiDung `gorm:"foreignKey:UserID;references:ID" json:"user"`
 	Podcast Podcast   `gorm:"foreignKey:PodcastID;references:ID" json:"podcast"`
 }
-
-func (FeaturedRating) TableName() string {
-	return "featured_rating" // 👈 bảng thật
-}
