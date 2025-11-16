@@ -51,6 +51,8 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 	admin := api.Group("/admin")
 	{
 		admin.Use(middleware.AuthMiddleware(), middleware.DBMiddleware(db))
+		admin.GET("/vip-payments", controllers.GetAllVIPPayments(db))
+		admin.GET("/vip-users", controllers.GetVIPUsers(db))
 
 		// Quản lý documents
 		admin.POST("/documents/upload", controllers.UploadDocument)

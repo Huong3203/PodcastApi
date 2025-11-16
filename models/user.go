@@ -14,4 +14,5 @@ type NguoiDung struct {
 	NgayTao  time.Time `gorm:"autoCreateTime" json:"ngay_tao"`
 	KichHoat bool      `gorm:"default:true" json:"kich_hoat"`
 	Provider string    `gorm:"type:enum('local', 'clerk');default:'local'" json:"provider"`
+	VIP      bool      `gorm:"default:false" json:"vip"` // user đã mua VIP
 }

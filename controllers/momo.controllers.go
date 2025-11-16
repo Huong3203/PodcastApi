@@ -36,32 +36,37 @@ func CreateMomoVIPPayment(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		// Tạo orderId và requestId
 		flake := sonyflake.NewSonyflake(sonyflake.Settings{})
 		orderNum, _ := flake.NextID()
 		requestNum, _ := flake.NextID()
-		orderId := strconv.FormatUint(orderNum, 10)     // base 10
-		requestId := strconv.FormatUint(requestNum, 10) // base 10
+		orderId := strconv.FormatUint(orderNum, 10)     // base10
+		requestId := strconv.FormatUint(requestNum, 10) // base10
 
+		// Thông tin Momo
 		partnerCode := "MOMOIQA420180417"
 		accessKey := "SvDmj2cOTYZmQQ3H"
 		secretKey := "PPuDXq1KowPT1ftR8DvlQTHhC03aul17"
 		requestType := "captureWallet"
 		extraData := ""
 
+		// Build raw signature theo đúng thứ tự Momo yêu cầu
 		rawSignature := fmt.Sprintf(
 			"accessKey=%s&amount=%d&extraData=%s&ipnUrl=%s&orderId=%s&orderInfo=%s&partnerCode=%s&redirectUrl=%s&requestId=%s&requestType=%s",
 			accessKey, req.Amount, extraData, req.IpnUrl, orderId, req.OrderInfo, partnerCode, req.RedirectUrl, requestId, requestType,
 		)
 
+		// Tạo HMAC SHA256
 		h := hmac.New(sha256.New, []byte(secretKey))
 		h.Write([]byte(rawSignature))
 		signature := hex.EncodeToString(h.Sum(nil))
 
+		// Payload gửi lên Momo
 		payload := map[string]interface{}{
 			"partnerCode": partnerCode,
 			"accessKey":   accessKey,
 			"requestId":   requestId,
-			"amount":      req.Amount,
+			"amount":      req.Amount, // số nguyên
 			"orderId":     orderId,
 			"orderInfo":   req.OrderInfo,
 			"redirectUrl": req.RedirectUrl,
@@ -82,7 +87,10 @@ func CreateMomoVIPPayment(db *gorm.DB) gin.HandlerFunc {
 		defer resp.Body.Close()
 
 		var result map[string]interface{}
-		json.NewDecoder(resp.Body).Decode(&result)
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to parse Momo response"})
+			return
+		}
 
 		// Lưu Payment VIP vào DB
 		payment := models.Payment{
@@ -108,18 +116,25 @@ func MomoVIPIPN(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		fmt.Println("VIP IPN received:", ipnData)
-
 		orderId, ok := ipnData["orderId"].(string)
 		if !ok {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Missing orderId"})
 			return
 		}
 
-		// TODO: Kiểm tra signature từ Momo trước khi cập nhật trạng thái
+		// TODO: kiểm tra signature từ Momo trước khi cập nhật trạng thái
 
-		// Cập nhật trạng thái Payment thành success
-		db.Model(&models.Payment{}).Where("id = ?", orderId).Update("status", "success")
+		// 1️⃣ Cập nhật Payment status thành success
+		var payment models.Payment
+		if err := db.First(&payment, "id = ?", orderId).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Payment not found"})
+			return
+		}
+		payment.Status = "success"
+		db.Save(&payment)
+
+		// 2️⃣ Cập nhật cột VIP của user
+		db.Model(&models.NguoiDung{}).Where("id = ?", payment.UserID).Update("vip", true)
 
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	}
