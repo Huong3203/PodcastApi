@@ -22,6 +22,11 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 		auth.POST("/login", controllers.Login)
 		auth.POST("/google/clerk", controllers.LoginWithClerk)
 	}
+	momo := api.Group("/momo")
+	{
+		momo.POST("/create", controllers.CreateMomoPayment(db))
+		momo.POST("/ipn", controllers.MomoIPN(db))
+	}
 
 	// ---------------- USER ----------------
 	user := api.Group("/users")
@@ -30,6 +35,7 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 		user.GET("/profile", controllers.GetProfile)
 		user.PUT("/profile", controllers.UpdateProfile)
 		user.POST("/change-password", controllers.ChangePassword)
+
 	}
 
 	// ---------------- USER NOTIFICATIONS ----------------
