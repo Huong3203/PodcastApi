@@ -18,28 +18,28 @@ import (
 	"gorm.io/gorm"
 )
 
-type MomoRequest struct {
-	PodcastID   string `json:"podcast_id"`
+type MomoVIPRequest struct {
+	UserID      string `json:"user_id"`
 	Amount      int    `json:"amount"`
 	OrderInfo   string `json:"orderInfo"`
 	RedirectUrl string `json:"redirectUrl"`
 	IpnUrl      string `json:"ipnUrl"`
 }
 
-// Tạo đơn Momo
-func CreateMomoPayment(db *gorm.DB) gin.HandlerFunc {
+// Tạo payment VIP
+func CreateMomoVIPPayment(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var req MomoRequest
+		var req MomoVIPRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
 
 		flake := sonyflake.NewSonyflake(sonyflake.Settings{})
-		a, _ := flake.NextID()
-		b, _ := flake.NextID()
-		orderId := strconv.FormatUint(a, 16)
-		requestId := strconv.FormatUint(b, 16)
+		orderIdNum, _ := flake.NextID()
+		requestIdNum, _ := flake.NextID()
+		orderId := strconv.FormatUint(orderIdNum, 16)
+		requestId := strconv.FormatUint(requestIdNum, 16)
 
 		partnerCode := "MOMOIQA420180417"
 		accessKey := "SvDmj2cOTYZmQQ3H"
@@ -75,7 +75,7 @@ func CreateMomoPayment(db *gorm.DB) gin.HandlerFunc {
 
 		resp, err := http.Post(endpoint, "application/json", bytes.NewBuffer(jsonPayload))
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create Momo payment"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create Momo VIP payment"})
 			return
 		}
 		defer resp.Body.Close()
@@ -83,23 +83,23 @@ func CreateMomoPayment(db *gorm.DB) gin.HandlerFunc {
 		var result map[string]interface{}
 		json.NewDecoder(resp.Body).Decode(&result)
 
-		// Lưu Payment vào DB
+		// Lưu Payment VIP vào DB
 		payment := models.Payment{
-			ID:        uuid.NewString(),
-			PodcastID: req.PodcastID,
-			Amount:    req.Amount,
-			Status:    "pending",
+			ID:     uuid.NewString(),
+			UserID: req.UserID,
+			Amount: req.Amount,
+			Status: "pending",
 		}
 		if err := db.Create(&payment).Error; err != nil {
-			log.Println("DB create payment error:", err)
+			log.Println("DB create VIP payment error:", err)
 		}
 
 		c.JSON(http.StatusOK, result)
 	}
 }
 
-// IPN Momo
-func MomoIPN(db *gorm.DB) gin.HandlerFunc {
+// IPN Momo VIP
+func MomoVIPIPN(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var ipnData map[string]interface{}
 		if err := c.ShouldBindJSON(&ipnData); err != nil {
@@ -107,7 +107,7 @@ func MomoIPN(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		fmt.Println("IPN received:", ipnData)
+		fmt.Println("VIP IPN received:", ipnData)
 
 		orderId, ok := ipnData["orderId"].(string)
 		if !ok {
@@ -117,7 +117,6 @@ func MomoIPN(db *gorm.DB) gin.HandlerFunc {
 
 		// TODO: kiểm tra signature từ Momo trước khi cập nhật
 
-		// Cập nhật status Payment
 		db.Model(&models.Payment{}).Where("id = ?", orderId).Update("status", "success")
 
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})

@@ -24,8 +24,8 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 	}
 	momo := api.Group("/momo")
 	{
-		momo.POST("/create", controllers.CreateMomoPayment(db))
-		momo.POST("/ipn", controllers.MomoIPN(db))
+		momo.POST("/vip/create", controllers.CreateMomoVIPPayment(db)) // tạo payment VIP
+		momo.POST("/vip/ipn", controllers.MomoVIPIPN(db))              // nhận IPN VIP
 	}
 
 	// ---------------- USER ----------------
