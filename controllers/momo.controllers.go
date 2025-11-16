@@ -18,12 +18,13 @@ import (
 	"gorm.io/gorm"
 )
 
+// Request từ frontend để mua VIP 1 lần
 type MomoVIPRequest struct {
-	UserID      string `json:"user_id"`
-	Amount      int    `json:"amount"`
-	OrderInfo   string `json:"orderInfo"`
-	RedirectUrl string `json:"redirectUrl"`
-	IpnUrl      string `json:"ipnUrl"`
+	UserID      string `json:"user_id"`     // ID user mua VIP
+	Amount      int    `json:"amount"`      // Số tiền
+	OrderInfo   string `json:"orderInfo"`   // Nội dung thanh toán
+	RedirectUrl string `json:"redirectUrl"` // URL redirect sau khi thanh toán
+	IpnUrl      string `json:"ipnUrl"`      // IPN callback URL
 }
 
 // Tạo payment VIP
@@ -36,10 +37,10 @@ func CreateMomoVIPPayment(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		flake := sonyflake.NewSonyflake(sonyflake.Settings{})
-		orderIdNum, _ := flake.NextID()
-		requestIdNum, _ := flake.NextID()
-		orderId := strconv.FormatUint(orderIdNum, 16)
-		requestId := strconv.FormatUint(requestIdNum, 16)
+		orderNum, _ := flake.NextID()
+		requestNum, _ := flake.NextID()
+		orderId := strconv.FormatUint(orderNum, 10)     // base 10
+		requestId := strconv.FormatUint(requestNum, 10) // base 10
 
 		partnerCode := "MOMOIQA420180417"
 		accessKey := "SvDmj2cOTYZmQQ3H"
@@ -60,7 +61,7 @@ func CreateMomoVIPPayment(db *gorm.DB) gin.HandlerFunc {
 			"partnerCode": partnerCode,
 			"accessKey":   accessKey,
 			"requestId":   requestId,
-			"amount":      strconv.Itoa(req.Amount),
+			"amount":      req.Amount,
 			"orderId":     orderId,
 			"orderInfo":   req.OrderInfo,
 			"redirectUrl": req.RedirectUrl,
@@ -98,7 +99,7 @@ func CreateMomoVIPPayment(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-// IPN Momo VIP
+// IPN callback Momo VIP
 func MomoVIPIPN(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var ipnData map[string]interface{}
@@ -115,8 +116,9 @@ func MomoVIPIPN(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// TODO: kiểm tra signature từ Momo trước khi cập nhật
+		// TODO: Kiểm tra signature từ Momo trước khi cập nhật trạng thái
 
+		// Cập nhật trạng thái Payment thành success
 		db.Model(&models.Payment{}).Where("id = ?", orderId).Update("status", "success")
 
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
