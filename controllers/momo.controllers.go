@@ -27,7 +27,7 @@ type MomoVIPRequest struct {
 	IpnUrl      string `json:"ipnUrl"`      // IPN callback URL
 }
 
-// Tạo payment VIP
+// Tạo payment VIP chỉ theo user
 func CreateMomoVIPPayment(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req MomoVIPRequest
@@ -92,7 +92,7 @@ func CreateMomoVIPPayment(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Lưu Payment VIP vào DB
+		// Lưu Payment VIP vào DB (chỉ user, không podcast)
 		payment := models.Payment{
 			ID:     uuid.NewString(),
 			UserID: req.UserID,
@@ -124,7 +124,7 @@ func MomoVIPIPN(db *gorm.DB) gin.HandlerFunc {
 
 		// TODO: kiểm tra signature từ Momo trước khi cập nhật trạng thái
 
-		// 1️⃣ Cập nhật Payment status thành success
+		// Cập nhật Payment status thành success
 		var payment models.Payment
 		if err := db.First(&payment, "id = ?", orderId).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Payment not found"})
@@ -133,7 +133,7 @@ func MomoVIPIPN(db *gorm.DB) gin.HandlerFunc {
 		payment.Status = "success"
 		db.Save(&payment)
 
-		// 2️⃣ Cập nhật cột VIP của user
+		// Cập nhật cột VIP của user
 		db.Model(&models.NguoiDung{}).Where("id = ?", payment.UserID).Update("vip", true)
 
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
