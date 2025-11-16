@@ -103,7 +103,7 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 		publicPodcast.GET("/:id/ratings", controllers.GetPodcastRatings)
 
 		// ⭐ PODCAST NỔI BẬT
-		publicPodcast.GET("/featured", controllers.GetFeaturedPodcasts)
+		publicPodcast.GET("/featured", controllers.GetFeaturedPodcasts) // đã có sẵn
 
 		publicPodcast.GET("/:id/recommendations", controllers.GetRecommendedPodcasts)
 	}
@@ -112,7 +112,7 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 	featuredRatings := api.Group("/ratings")
 	{
 		// ⭐ ĐÁNH GIÁ NỔI BẬT
-		featuredRatings.GET("/featured", controllers.GetFeaturedRatings)
+		featuredRatings.GET("/featured", controllers.GetFeaturedReviews) // controller mình viết ở trên
 	}
 
 	protectedPodcast := api.Group("/podcasts")
