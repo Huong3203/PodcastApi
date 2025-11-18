@@ -20,14 +20,15 @@ import (
 )
 
 // ================== CẤU HÌNH MOMO SANDBOX ==================
-
+//
+// GỢI Ý: Lấy 3 giá trị này trong business.momo.vn (thông tin tích hợp)
 const (
 	momoEndpoint    = "https://test-payment.momo.vn/v2/gateway/api/create"
 	momoPartnerCode = "MOMO"                             // TODO: đổi thành partnerCode TEST của bạn
 	momoAccessKey   = "F8BBA842ECF85"                    // TODO: đổi thành accessKey TEST của bạn
 	momoSecretKey   = "K951B6PE1waDMi640xX08PD3vg6EkVlz" // TODO: đổi thành secretKey TEST của bạn
 
-	// URL app/frontend để redirect về sau khi backend xử lý xong (tuỳ bạn)
+	// URL app/frontend sau khi backend xử lý xong (FE/app của bạn)
 	appClientRedirectURL = "https://example.com/payment-result" // hoặc deep link: "sonify://momo-result"
 )
 
@@ -36,9 +37,9 @@ const (
 type MomoVIPRequest struct {
 	UserID      string `json:"user_id"`     // user nâng cấp VIP
 	Amount      int    `json:"amount"`      // số tiền (VND)
-	OrderInfo   string `json:"orderInfo"`   // nội dung thanh toán
-	RedirectUrl string `json:"redirectUrl"` // URL redirect sau thanh toán (nên trỏ vào backend /momo/vip/return)
-	IpnUrl      string `json:"ipnUrl"`      // IPN callback URL (backend /momo/vip/ipn)
+	OrderInfo   string `json:"orderInfo"`   // nội dung hiển thị trong MoMo
+	RedirectUrl string `json:"redirectUrl"` // NÊN: https://api.yourdomain.com/momo/vip/return
+	IpnUrl      string `json:"ipnUrl"`      // NÊN: https://api.yourdomain.com/momo/vip/ipn
 }
 
 // ================== TẠO GIAO DỊCH VIP ==================
@@ -112,7 +113,7 @@ func CreateMomoVIPPayment(db *gorm.DB) gin.HandlerFunc {
 			"amount":      req.Amount,
 			"orderId":     orderId,
 			"orderInfo":   req.OrderInfo,
-			"redirectUrl": req.RedirectUrl, // NÊN LÀ /momo/vip/return của backend
+			"redirectUrl": req.RedirectUrl, // /momo/vip/return
 			"ipnUrl":      req.IpnUrl,      // /momo/vip/ipn
 			"extraData":   extraData,
 			"requestType": requestType,
@@ -144,12 +145,15 @@ func CreateMomoVIPPayment(db *gorm.DB) gin.HandlerFunc {
 		payment := models.Payment{
 			ID:      uuid.NewString(),
 			OrderID: orderId,
-			UserID:  req.UserID,
+			UserID:  req.UserID, // VIP theo user
 			Amount:  req.Amount,
 			Status:  "pending",
+			// PodcastID để nil vì đây là gói VIP
 		}
 		if err := db.Create(&payment).Error; err != nil {
 			log.Println("DB create VIP payment error:", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "DB create payment failed"})
+			return
 		}
 
 		// Thêm orderId/requestId vào response cho FE
@@ -161,12 +165,17 @@ func CreateMomoVIPPayment(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-// ================== IPN TỪ MOMO (BACKUP, SERVER-TO-SERVER) ==================
+// ================== IPN TỪ MOMO (SERVER-TO-SERVER) ==================
 //
 // Route: POST /momo/vip/ipn
 func MomoVIPIPN(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var ipnData map[string]interface{}
+		var ipnData struct {
+			OrderID    string `json:"orderId"`
+			RequestID  string `json:"requestId"`
+			ResultCode int    `json:"resultCode"`
+			Message    string `json:"message"`
+		}
 		if err := c.ShouldBindJSON(&ipnData); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
@@ -174,40 +183,34 @@ func MomoVIPIPN(db *gorm.DB) gin.HandlerFunc {
 
 		log.Println("MoMo IPN data:", ipnData)
 
-		orderId, ok := ipnData["orderId"].(string)
-		if !ok || orderId == "" {
+		if ipnData.OrderID == "" {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Missing orderId"})
 			return
 		}
 
-		resultCodeFloat, _ := ipnData["resultCode"].(float64)
-		resultCode := int(resultCodeFloat)
-
-		// TODO: verify chữ ký m2signature nếu cần bảo mật cao
-
 		var payment models.Payment
-		if err := db.First(&payment, "order_id = ?", orderId).Error; err != nil {
-			log.Println("Payment not found for orderId:", orderId)
+		if err := db.First(&payment, "order_id = ?", ipnData.OrderID).Error; err != nil {
+			log.Println("Payment not found for orderId:", ipnData.OrderID)
 			c.Status(http.StatusNoContent)
 			return
 		}
 
-		if resultCode == 0 {
+		if ipnData.ResultCode == 0 {
 			// THANH TOÁN THÀNH CÔNG
 			payment.Status = "success"
 			if err := db.Save(&payment).Error; err != nil {
-				log.Println("Update payment success error:", err)
+				log.Println("Update payment success error (IPN):", err)
 			}
 			// Set VIP user
 			if err := db.Model(&models.NguoiDung{}).
 				Where("id = ?", payment.UserID).
 				Update("vip", true).Error; err != nil {
-				log.Println("Update user VIP error:", err)
+				log.Println("Update user VIP error (IPN):", err)
 			}
 		} else {
 			payment.Status = "failed"
 			if err := db.Save(&payment).Error; err != nil {
-				log.Println("Update payment failed error:", err)
+				log.Println("Update payment failed error (IPN):", err)
 			}
 		}
 
@@ -219,7 +222,6 @@ func MomoVIPIPN(db *gorm.DB) gin.HandlerFunc {
 //
 // Route: GET /momo/vip/return
 // Đây là URL bạn gán vào redirectUrl khi tạo payment.
-// MoMo sẽ redirect user về đây sau khi thanh toán (kèm query: orderId, resultCode, message, ...).
 func MomoVIPReturn(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		orderId := c.Query("orderId")
@@ -233,17 +235,14 @@ func MomoVIPReturn(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Tìm payment
 		var payment models.Payment
 		if err := db.First(&payment, "order_id = ?", orderId).Error; err != nil {
 			log.Println("Payment not found in RETURN for orderId:", orderId)
-			// Redirect về app với trạng thái lỗi
 			redirect := fmt.Sprintf("%s?orderId=%s&status=not_found", appClientRedirectURL, orderId)
 			c.Redirect(http.StatusFound, redirect)
 			return
 		}
 
-		// resultCode=0 -> thành công
 		if resultCodeStr == "0" {
 			payment.Status = "success"
 			if err := db.Save(&payment).Error; err != nil {
@@ -260,7 +259,6 @@ func MomoVIPReturn(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Không thành công
 		payment.Status = "failed"
 		if err := db.Save(&payment).Error; err != nil {
 			log.Println("Update payment failed error (RETURN):", err)
