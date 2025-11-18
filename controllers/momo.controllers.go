@@ -145,7 +145,7 @@ func CreateMomoVIPPayment(db *gorm.DB) gin.HandlerFunc {
 		payment := models.Payment{
 			ID:      uuid.NewString(),
 			OrderID: orderId,
-			UserID:  req.UserID, // VIP theo user
+			UserID:  req.UserID,  // VIP theo user
 			Amount:  req.Amount,
 			Status:  "pending",
 			// PodcastID để nil vì đây là gói VIP
