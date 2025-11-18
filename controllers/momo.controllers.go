@@ -27,32 +27,30 @@ const (
 	momoSecretKey   = "PPuDXq1KowPT1ftR8DvlQTHhC03aul17"
 )
 
-// Body từ FE, KHÔNG cần userId (lấy từ URL)
+// Body từ FE: thanh toán VIP cho 1 user
 type MomoVIPRequest struct {
+	UserID      string `json:"user_id"`     // user nâng cấp VIP
 	Amount      int    `json:"amount"`      // số tiền (VND)
-	OrderInfo   string `json:"orderInfo"`   // nội dung thanh toán, ví dụ: "Nâng cấp VIP 1 tháng"
+	OrderInfo   string `json:"orderInfo"`   // nội dung thanh toán
 	RedirectUrl string `json:"redirectUrl"` // URL redirect sau thanh toán
-	IpnUrl      string `json:"ipnUrl"`      // IPN callback URL (public, vd: ngrok / domain backend)
+	IpnUrl      string `json:"ipnUrl"`      // IPN callback URL (public)
 }
 
-// POST /users/:userId/momo/vip/create
+// POST /momo/vip/create
 func CreateMomoVIPPayment(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Lấy userId từ URL (người được nâng cấp VIP)
-		userID := c.Param("userId")
-		if userID == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Missing userId in URL"})
-			return
-		}
-
 		var req MomoVIPRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
+		if req.UserID == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "user_id is required"})
+			return
+		}
 
 		requestType := "captureWallet"
-		extraData := "" // nếu muốn kèm thêm thông tin thì encode base64 JSON
+		extraData := "" // nếu muốn kèm thêm info thì encode base64 JSON
 
 		// Tạo orderId & requestId (unique)
 		flake := sonyflake.NewSonyflake(sonyflake.Settings{})
@@ -73,7 +71,7 @@ func CreateMomoVIPPayment(db *gorm.DB) gin.HandlerFunc {
 		orderId := strconv.FormatUint(orderNum, 10)
 		requestId := strconv.FormatUint(requestNum, 10)
 
-		// Build rawSignature đúng format tài liệu MoMo
+		// Build rawSignature đúng format MoMo
 		rawSignature := fmt.Sprintf(
 			"accessKey=%s&amount=%d&extraData=%s&ipnUrl=%s&orderId=%s&orderInfo=%s&partnerCode=%s&redirectUrl=%s&requestId=%s&requestType=%s",
 			momoAccessKey,
@@ -130,7 +128,7 @@ func CreateMomoVIPPayment(db *gorm.DB) gin.HandlerFunc {
 		payment := models.Payment{
 			ID:      uuid.NewString(),
 			OrderID: orderId,
-			UserID:  userID,
+			UserID:  req.UserID,
 			Amount:  req.Amount,
 			Status:  "pending",
 		}
@@ -182,7 +180,7 @@ func MomoVIPIPN(db *gorm.DB) gin.HandlerFunc {
 				log.Println("Update payment success error:", err)
 			}
 
-			// Set VIP đúng user (giả sử models.NguoiDung có field vip bool)
+			// Cập nhật VIP cho user (giả sử models.NguoiDung có field vip bool)
 			if err := db.Model(&models.NguoiDung{}).
 				Where("id = ?", payment.UserID).
 				Update("vip", true).Error; err != nil {

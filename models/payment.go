@@ -1,6 +1,8 @@
 package models
 
-import "time"
+import (
+	"time"
+)
 
 type Payment struct {
 	ID        string    `gorm:"type:char(36);primaryKey" json:"id"`
