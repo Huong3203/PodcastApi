@@ -19,7 +19,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// ====== CẤU HÌNH MOMO SANDBOX (KEY GỐC DEMO) ======
+// ====== CẤU HÌNH MOMO SANDBOX (KEY DEMO) ======
 const (
 	momoEndpoint    = "https://test-payment.momo.vn/v2/gateway/api/create"
 	momoPartnerCode = "MOMOIQA420180417"
@@ -30,15 +30,15 @@ const (
 // Body từ FE, KHÔNG cần userId (lấy từ URL)
 type MomoVIPRequest struct {
 	Amount      int    `json:"amount"`      // số tiền (VND)
-	OrderInfo   string `json:"orderInfo"`   // nội dung thanh toán
+	OrderInfo   string `json:"orderInfo"`   // nội dung thanh toán, ví dụ: "Nâng cấp VIP 1 tháng"
 	RedirectUrl string `json:"redirectUrl"` // URL redirect sau thanh toán
-	IpnUrl      string `json:"ipnUrl"`      // IPN callback URL
+	IpnUrl      string `json:"ipnUrl"`      // IPN callback URL (public, vd: ngrok / domain backend)
 }
 
 // POST /users/:userId/momo/vip/create
 func CreateMomoVIPPayment(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Lấy userId từ URL
+		// Lấy userId từ URL (người được nâng cấp VIP)
 		userID := c.Param("userId")
 		if userID == "" {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Missing userId in URL"})
@@ -52,9 +52,9 @@ func CreateMomoVIPPayment(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		requestType := "captureWallet"
-		extraData := "" // nếu muốn kèm thêm info thì encode base64 JSON
+		extraData := "" // nếu muốn kèm thêm thông tin thì encode base64 JSON
 
-		// Tạo orderId & requestId
+		// Tạo orderId & requestId (unique)
 		flake := sonyflake.NewSonyflake(sonyflake.Settings{})
 		if flake == nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Sonyflake init error"})
@@ -126,18 +126,19 @@ func CreateMomoVIPPayment(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Lưu Payment gắn với userID
+		// Lưu Payment gắn với userID + orderId
 		payment := models.Payment{
-			ID:     uuid.NewString(),
-			UserID: userID,
-			Amount: req.Amount,
-			Status: "pending",
+			ID:      uuid.NewString(),
+			OrderID: orderId,
+			UserID:  userID,
+			Amount:  req.Amount,
+			Status:  "pending",
 		}
 		if err := db.Create(&payment).Error; err != nil {
 			log.Println("DB create VIP payment error:", err)
 		}
 
-		// Trả về cho FE cả payUrl/deeplink
+		// Trả về cho FE: payUrl / deeplink / orderId / requestId
 		momoRes["orderId"] = orderId
 		momoRes["requestId"] = requestId
 
@@ -145,7 +146,8 @@ func CreateMomoVIPPayment(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-// IPN callback MoMo VIP (không cần key, trừ khi bạn verify chữ ký)
+// IPN callback MoMo VIP
+// Route: POST /momo/vip/ipn
 func MomoVIPIPN(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var ipnData map[string]interface{}
@@ -163,29 +165,37 @@ func MomoVIPIPN(db *gorm.DB) gin.HandlerFunc {
 		resultCodeFloat, _ := ipnData["resultCode"].(float64)
 		resultCode := int(resultCodeFloat)
 
-		// TODO: nếu muốn chuẩn security thì verify m2signature ở đây
+		// TODO: nếu muốn chuẩn security thì verify chữ ký m2signature ở đây
 
 		// Tìm payment theo OrderID
 		var payment models.Payment
 		if err := db.First(&payment, "order_id = ?", orderId).Error; err != nil {
 			log.Println("Payment not found for orderId:", orderId)
+			// vẫn nên trả 204 để MoMo không retry quá nhiều
 			c.Status(http.StatusNoContent)
 			return
 		}
 
 		if resultCode == 0 {
 			payment.Status = "success"
-			db.Save(&payment)
+			if err := db.Save(&payment).Error; err != nil {
+				log.Println("Update payment success error:", err)
+			}
 
-			// Set VIP đúng user
-			db.Model(&models.NguoiDung{}).
+			// Set VIP đúng user (giả sử models.NguoiDung có field vip bool)
+			if err := db.Model(&models.NguoiDung{}).
 				Where("id = ?", payment.UserID).
-				Update("vip", true)
+				Update("vip", true).Error; err != nil {
+				log.Println("Update user VIP error:", err)
+			}
 		} else {
 			payment.Status = "failed"
-			db.Save(&payment)
+			if err := db.Save(&payment).Error; err != nil {
+				log.Println("Update payment failed error:", err)
+			}
 		}
 
+		// Chuẩn docs: trả 204, không body
 		c.Status(http.StatusNoContent)
 	}
 }
