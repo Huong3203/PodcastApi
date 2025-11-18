@@ -22,9 +22,9 @@ import (
 // ====== CẤU HÌNH MOMO SANDBOX (KEY DEMO) ======
 const (
 	momoEndpoint    = "https://test-payment.momo.vn/v2/gateway/api/create"
-	momoPartnerCode = "MOMOIQA420180417"
-	momoAccessKey   = "SvDmj2cOTYZmQQ3H"
-	momoSecretKey   = "PPuDXq1KowPT1ftR8DvlQTHhC03aul17"
+	momoPartnerCode = "MOMO"
+	momoAccessKey   = "F8BBA842ECF85"
+	momoSecretKey   = "K951B6PE1waDMi640xX08PD3vg6EkVlz"
 )
 
 // Body từ FE: thanh toán VIP cho 1 user
