@@ -14,7 +14,8 @@ import (
 	"github.com/clerkinc/clerk-sdk-go/clerk"
 )
 
-var clerkClient clerk.Client
+// Export ra để các package khác dùng
+var ClerkClient clerk.Client
 
 // INIT CHỈ TẠO 1 LẦN
 func init() {
@@ -24,7 +25,7 @@ func init() {
 	}
 
 	var err error
-	clerkClient, err = clerk.NewClient(apiKey)
+	ClerkClient, err = clerk.NewClient(apiKey)
 	if err != nil {
 		panic("Không thể tạo Clerk client: " + err.Error())
 	}
@@ -32,7 +33,6 @@ func init() {
 
 func AuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
 			authHeader = c.GetHeader("X-Auth-Token")
@@ -64,7 +64,7 @@ func AuthMiddleware() gin.HandlerFunc {
 		}
 
 		// 2) Kiểm tra token Clerk
-		sess, err := clerkClient.VerifyToken(token)
+		sess, err := ClerkClient.VerifyToken(token)
 		if err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Token không hợp lệ (local + Clerk đều fail)"})
 			c.Abort()
@@ -74,7 +74,7 @@ func AuthMiddleware() gin.HandlerFunc {
 		clerkID := sess.Subject
 
 		// 3) Lấy thông tin user từ Clerk
-		clerkUser, err := clerkClient.Users().Read(clerkID)
+		clerkUser, err := ClerkClient.Users().Read(clerkID)
 		if err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Không thể đọc user từ Clerk"})
 			c.Abort()
