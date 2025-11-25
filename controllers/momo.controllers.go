@@ -2,16 +2,16 @@ package controllers
 
 import (
 	"bytes"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/Huong3203/APIPodcast/models"
+	"github.com/Huong3203/APIPodcast/services"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -19,93 +19,67 @@ import (
 	"gorm.io/gorm"
 )
 
-// ================== CẤU HÌNH MOMO SANDBOX ==================
-//
-// GỢI Ý: Lấy 3 giá trị này trong business.momo.vn (thông tin tích hợp)
 const (
-	momoEndpoint    = "https://test-payment.momo.vn/v2/gateway/api/create"
-	momoPartnerCode = "MOMO"                             // TODO: đổi thành partnerCode TEST của bạn
-	momoAccessKey   = "F8BBA842ECF85"                    // TODO: đổi thành accessKey TEST của bạn
-	momoSecretKey   = "K951B6PE1waDMi640xX08PD3vg6EkVlz" // TODO: đổi thành secretKey TEST của bạn
-
-	// URL app/frontend sau khi backend xử lý xong (FE/app của bạn)
-	appClientRedirectURL = "https://example.com/payment-result" // hoặc deep link: "sonify://momo-result"
+	// copy lại từ services hoặc import config chung
+	momoPartnerCode = services.MomoPartnerCode
+	momoAccessKey   = services.MomoAccessKey
+	momoSecretKey   = services.MomoSecretKey
 )
 
-// ================== REQUEST BODY TỪ FE ==================
-
-type MomoVIPRequest struct {
-	UserID      string `json:"user_id"`     // user nâng cấp VIP
-	Amount      int    `json:"amount"`      // số tiền (VND)
-	OrderInfo   string `json:"orderInfo"`   // nội dung hiển thị trong MoMo
-	RedirectUrl string `json:"redirectUrl"` // NÊN: https://api.yourdomain.com/momo/vip/return
-	IpnUrl      string `json:"ipnUrl"`      // NÊN: https://api.yourdomain.com/momo/vip/ipn
-}
-
-// ================== TẠO GIAO DỊCH VIP ==================
-//
-// Route: POST /momo/vip/create
+// CreateMomoVIPPayment: tạo payment (FE gọi)
 func CreateMomoVIPPayment(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var req MomoVIPRequest
+		var req struct {
+			UserID       string `json:"user_id"`
+			Amount       int    `json:"amount"`
+			OrderInfo    string `json:"orderInfo"`
+			RedirectUrl  string `json:"redirectUrl"`
+			IpnUrl       string `json:"ipnUrl"`
+			AutoRenew    bool   `json:"auto_renew"`    // nếu FE gửi muốn auto renew
+			PeriodMonths int    `json:"period_months"` // số tháng gói (mặc định 1)
+		}
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-		if req.UserID == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "user_id is required"})
+		if req.UserID == "" || req.Amount <= 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid payload"})
 			return
 		}
-		if req.Amount <= 0 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "amount must be > 0"})
-			return
+		if req.PeriodMonths <= 0 {
+			req.PeriodMonths = 1
 		}
 
-		requestType := "captureWallet"
-		extraData := "" // nếu muốn kèm thêm info thì encode base64 JSON
-
-		// --------- Sinh orderId & requestId duy nhất ---------
+		// generate orderId/requestId
 		flake := sonyflake.NewSonyflake(sonyflake.Settings{})
 		if flake == nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Sonyflake init error"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "sonyflake init failed"})
 			return
 		}
-		orderNum, err := flake.NextID()
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Generate orderId failed"})
-			return
-		}
-		requestNum, err := flake.NextID()
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Generate requestId failed"})
-			return
-		}
+		orderNum, _ := flake.NextID()
+		requestNum, _ := flake.NextID()
 		orderId := strconv.FormatUint(orderNum, 10)
 		requestId := strconv.FormatUint(requestNum, 10)
 
-		// --------- Build rawSignature đúng format MoMo v2 ---------
-		rawSignature := fmt.Sprintf(
-			"accessKey=%s&amount=%d&extraData=%s&ipnUrl=%s&orderId=%s&orderInfo=%s&partnerCode=%s&redirectUrl=%s&requestId=%s&requestType=%s",
-			momoAccessKey,
-			req.Amount,
-			extraData,
-			req.IpnUrl,
-			orderId,
-			req.OrderInfo,
-			momoPartnerCode,
-			req.RedirectUrl,
-			requestId,
-			requestType,
-		)
+		requestType := "captureWallet"
+		extraData := "" // nếu cần
 
-		log.Println("MoMo rawSignature:", rawSignature)
+		// build raw signature và sign
+		fields := map[string]string{
+			"accessKey":   momoAccessKey,
+			"amount":      strconv.Itoa(req.Amount),
+			"extraData":   extraData,
+			"ipnUrl":      req.IpnUrl,
+			"orderId":     orderId,
+			"orderInfo":   req.OrderInfo,
+			"partnerCode": momoPartnerCode,
+			"redirectUrl": req.RedirectUrl,
+			"requestId":   requestId,
+			"requestType": requestType,
+		}
+		raw := services.BuildRawSignature(fields)
+		sign := services.SignHmacSHA256(raw)
 
-		// --------- Tạo HMAC SHA256 ---------
-		h := hmac.New(sha256.New, []byte(momoSecretKey))
-		h.Write([]byte(rawSignature))
-		signature := hex.EncodeToString(h.Sum(nil))
-
-		// --------- Payload gửi MoMo ---------
 		payload := map[string]interface{}{
 			"partnerCode": momoPartnerCode,
 			"accessKey":   momoAccessKey,
@@ -113,132 +87,174 @@ func CreateMomoVIPPayment(db *gorm.DB) gin.HandlerFunc {
 			"amount":      req.Amount,
 			"orderId":     orderId,
 			"orderInfo":   req.OrderInfo,
-			"redirectUrl": req.RedirectUrl, // /momo/vip/return
-			"ipnUrl":      req.IpnUrl,      // /momo/vip/ipn
+			"redirectUrl": req.RedirectUrl,
+			"ipnUrl":      req.IpnUrl,
 			"extraData":   extraData,
 			"requestType": requestType,
 			"lang":        "vi",
-			"signature":   signature,
+			"signature":   sign,
 		}
 
-		jsonPayload, _ := json.Marshal(payload)
-
-		// --------- Gọi API MoMo ---------
-		resp, err := http.Post(momoEndpoint, "application/json", bytes.NewBuffer(jsonPayload))
+		momoRes, err := services.CreateMoMoRequest(payload)
 		if err != nil {
-			log.Println("MoMo create error:", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create Momo VIP payment"})
-			return
-		}
-		defer resp.Body.Close()
-
-		var momoRes map[string]interface{}
-		if err := json.NewDecoder(resp.Body).Decode(&momoRes); err != nil {
-			log.Println("Decode MoMo response error:", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to parse Momo response"})
+			log.Println("momo create error:", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "momo create error"})
 			return
 		}
 
-		log.Println("MoMo response:", momoRes)
-
-		// --------- Lưu Payment gắn với userID + orderId ---------
+		// Lưu payment
 		payment := models.Payment{
-			ID:      uuid.NewString(),
-			OrderID: orderId,
-			UserID:  req.UserID,  // VIP theo user
-			Amount:  req.Amount,
-			Status:  "pending",
-			// PodcastID để nil vì đây là gói VIP
+			ID:           uuid.NewString(),
+			OrderID:      orderId,
+			UserID:       req.UserID,
+			Amount:       req.Amount,
+			Status:       "pending",
+			IsRecurring:  req.AutoRenew,
+			PeriodMonths: req.PeriodMonths,
 		}
 		if err := db.Create(&payment).Error; err != nil {
-			log.Println("DB create VIP payment error:", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "DB create payment failed"})
+			log.Println("db create payment error:", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "db create error"})
 			return
 		}
 
-		// Thêm orderId/requestId vào response cho FE
+		// Nếu FE muốn lưu setting auto-renew trên user
+		if req.AutoRenew {
+			if err := db.Model(&models.NguoiDung{}).Where("id = ?", req.UserID).Update("auto_renew", true).Error; err != nil {
+				log.Println("update user auto_renew err:", err)
+			}
+		}
+
+		// trả về response MoMo cho FE mở payUrl
 		momoRes["orderId"] = orderId
 		momoRes["requestId"] = requestId
-
-		// FE nhận payUrl → mở MoMo
 		c.JSON(http.StatusOK, momoRes)
 	}
 }
 
-// ================== IPN TỪ MOMO (SERVER-TO-SERVER) ==================
-//
-// Route: POST /momo/vip/ipn
+// MomoVIPIPN: xử lý IPN từ MoMo
 func MomoVIPIPN(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var ipnData struct {
-			OrderID    string `json:"orderId"`
-			RequestID  string `json:"requestId"`
-			ResultCode int    `json:"resultCode"`
-			Message    string `json:"message"`
+		// đọc body thô để có thể verify signature
+		bodyBytes, err := io.ReadAll(c.Request.Body)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "cannot read body"})
+			return
 		}
-		if err := c.ShouldBindJSON(&ipnData); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		// restore body để dùng gin.Bind nếu cần
+		c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+
+		var ipn map[string]interface{}
+		if err := json.Unmarshal(bodyBytes, &ipn); err != nil {
+			log.Println("ipn decode err:", err)
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid ipn body"})
 			return
 		}
 
-		log.Println("MoMo IPN data:", ipnData)
+		// lấy signature từ body
+		signature, _ := ipn["signature"].(string)
 
-		if ipnData.OrderID == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Missing orderId"})
+		// Build raw string theo MoMo spec: có thể khác nhau tuỳ payload của MoMo IPN
+		// Common các field: partnerCode, orderId, requestId, amount, responseTime, resultCode, message, transId, extraData
+		// Hãy đảm bảo thứ tự giống MoMo gửi — dưới đây là 1 ví dụ, bạn cần sửa nếu MoMo spec khác
+		raw := fmt.Sprintf(
+			"accessKey=%s&amount=%v&extraData=%v&orderId=%v&orderInfo=%v&partnerCode=%s&requestId=%v&responseTime=%v&resultCode=%v&transId=%v",
+			services.MomoAccessKey,
+			ipn["amount"],
+			ipn["extraData"],
+			ipn["orderId"],
+			ipn["orderInfo"],
+			services.MomoPartnerCode,
+			ipn["requestId"],
+			ipn["responseTime"],
+			ipn["resultCode"],
+			ipn["transId"],
+		)
+
+		ok := services.VerifySignature(raw, signature)
+		if !ok {
+			log.Println("IPN signature verification failed")
+			// trả 400 cho MoMo hoặc 403; MoMo có thể retry — tùy policy
+			c.JSON(http.StatusForbidden, gin.H{"error": "invalid signature"})
 			return
+		}
+
+		orderID, _ := ipn["orderId"].(string)
+		resultCodeF := ipn["resultCode"]
+		var resultCode int
+		switch v := resultCodeF.(type) {
+		case float64:
+			resultCode = int(v)
+		case int:
+			resultCode = v
+		default:
+			resultCode = -1
 		}
 
 		var payment models.Payment
-		if err := db.First(&payment, "order_id = ?", ipnData.OrderID).Error; err != nil {
-			log.Println("Payment not found for orderId:", ipnData.OrderID)
+		if err := db.First(&payment, "order_id = ?", orderID).Error; err != nil {
+			log.Println("payment not found ipn:", orderID)
 			c.Status(http.StatusNoContent)
 			return
 		}
 
-		if ipnData.ResultCode == 0 {
-			// THANH TOÁN THÀNH CÔNG
+		if resultCode == 0 {
+			// success
 			payment.Status = "success"
 			if err := db.Save(&payment).Error; err != nil {
-				log.Println("Update payment success error (IPN):", err)
+				log.Println("update payment err:", err)
 			}
-			// Set VIP user
-			if err := db.Model(&models.NguoiDung{}).
-				Where("id = ?", payment.UserID).
-				Update("vip", true).Error; err != nil {
-				log.Println("Update user VIP error (IPN):", err)
+			// set VIP và VIPExpires theo PeriodMonths
+			if err := setUserVIPByPayment(db, &payment); err != nil {
+				log.Println("set user vip err:", err)
 			}
 		} else {
 			payment.Status = "failed"
 			if err := db.Save(&payment).Error; err != nil {
-				log.Println("Update payment failed error (IPN):", err)
+				log.Println("update payment failed err:", err)
 			}
 		}
 
-		c.Status(http.StatusNoContent)
+		// MoMo thường yêu cầu trả 200 OK hoặc empty 204
+		c.Status(http.StatusOK)
 	}
 }
 
-// ================== RETURN URL: TRẢ VỀ APP + CẬP NHẬT STATUS ==================
-//
-// Route: GET /momo/vip/return
-// Đây là URL bạn gán vào redirectUrl khi tạo payment.
+// MomoVIPReturn: xử lý redirect user từ MoMo (FE sẽ nhận query params)
 func MomoVIPReturn(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		orderId := c.Query("orderId")
 		resultCodeStr := c.Query("resultCode")
 		message := c.Query("message")
+		transId := c.Query("transId")
+		signature := c.Query("signature") // có thể kèm theo
 
 		log.Println("MoMo RETURN:", "orderId=", orderId, "resultCode=", resultCodeStr, "message=", message)
+
+		// optional verify query signature nếu MoMo gửi
+		if signature != "" {
+			raw := fmt.Sprintf("accessKey=%s&orderId=%s&partnerCode=%s&requestId=%s&amount=%s&transId=%s&resultCode=%s",
+				services.MomoAccessKey,
+				orderId,
+				services.MomoPartnerCode,
+				c.Query("requestId"),
+				c.Query("amount"),
+				transId,
+				resultCodeStr,
+			)
+			if !services.VerifySignature(raw, signature) {
+				log.Println("return signature invalid")
+			}
+		}
 
 		if orderId == "" {
 			c.String(http.StatusBadRequest, "Missing orderId")
 			return
 		}
-
 		var payment models.Payment
 		if err := db.First(&payment, "order_id = ?", orderId).Error; err != nil {
 			log.Println("Payment not found in RETURN for orderId:", orderId)
-			redirect := fmt.Sprintf("%s?orderId=%s&status=not_found", appClientRedirectURL, orderId)
+			redirect := fmt.Sprintf("%s?orderId=%s&status=not_found", services.AppClientRedirectURL, orderId)
 			c.Redirect(http.StatusFound, redirect)
 			return
 		}
@@ -246,24 +262,44 @@ func MomoVIPReturn(db *gorm.DB) gin.HandlerFunc {
 		if resultCodeStr == "0" {
 			payment.Status = "success"
 			if err := db.Save(&payment).Error; err != nil {
-				log.Println("Update payment success error (RETURN):", err)
+				log.Println("update payment err:", err)
 			}
-			if err := db.Model(&models.NguoiDung{}).
-				Where("id = ?", payment.UserID).
-				Update("vip", true).Error; err != nil {
-				log.Println("Update user VIP error (RETURN):", err)
+			if err := setUserVIPByPayment(db, &payment); err != nil {
+				log.Println("set user vip err:", err)
 			}
-			// Redirect về app với status success
-			redirect := fmt.Sprintf("%s?orderId=%s&status=success", appClientRedirectURL, orderId)
+			redirect := fmt.Sprintf("%s?orderId=%s&status=success", services.AppClientRedirectURL, orderId)
 			c.Redirect(http.StatusFound, redirect)
 			return
 		}
 
+		// failed
 		payment.Status = "failed"
-		if err := db.Save(&payment).Error; err != nil {
-			log.Println("Update payment failed error (RETURN):", err)
-		}
-		redirect := fmt.Sprintf("%s?orderId=%s&status=failed&message=%s", appClientRedirectURL, orderId, message)
+		_ = db.Save(&payment)
+		redirect := fmt.Sprintf("%s?orderId=%s&status=failed&message=%s", services.AppClientRedirectURL, orderId, message)
 		c.Redirect(http.StatusFound, redirect)
 	}
+}
+
+// setUserVIPByPayment set VIP true và set VIPExpires theo PeriodMonths của payment
+func setUserVIPByPayment(db *gorm.DB, p *models.Payment) error {
+	var user models.NguoiDung
+	if err := db.First(&user, "id = ?", p.UserID).Error; err != nil {
+		return err
+	}
+	now := time.Now()
+	var newExpiry time.Time
+	if user.VIPExpires != nil && user.VIPExpires.After(now) {
+		// nếu còn VIP, gia hạn từ expires
+		newExpiry = user.VIPExpires.AddDate(0, p.PeriodMonths, 0)
+	} else {
+		newExpiry = now.AddDate(0, p.PeriodMonths, 0)
+	}
+
+	if err := db.Model(&models.NguoiDung{}).Where("id = ?", p.UserID).Updates(map[string]interface{}{
+		"vip":         true,
+		"vip_expires": newExpiry,
+	}).Error; err != nil {
+		return err
+	}
+	return nil
 }

@@ -44,3 +44,38 @@ func GetVIPUsers(db *gorm.DB) gin.HandlerFunc {
 		c.JSON(200, gin.H{"data": users})
 	}
 }
+
+func GetUserVIPHistory(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userId := c.Param("userId")
+
+		var payments []models.Payment
+		err := db.Where("user_id = ? AND podcast_id IS NULL", userId).
+			Order("created_at DESC").
+			Find(&payments).Error
+
+		if err != nil {
+			c.JSON(500, gin.H{"error": "Cannot fetch payment history"})
+			return
+		}
+
+		c.JSON(200, gin.H{"data": payments})
+	}
+}
+
+func CheckUserVIP(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userId := c.Param("userId")
+
+		var user models.NguoiDung
+		if err := db.First(&user, "id = ?", userId).Error; err != nil {
+			c.JSON(404, gin.H{"error": "User not found"})
+			return
+		}
+
+		c.JSON(200, gin.H{
+			"user_id": userId,
+			"vip":     user.VIP,
+		})
+	}
+}

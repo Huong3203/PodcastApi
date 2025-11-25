@@ -14,10 +14,15 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// 🔹 GET /api/users/profile
-
+// =======================
+// GET /api/users/profile
+// =======================
 func GetProfile(c *gin.Context) {
 	userID := c.GetString("user_id")
+	if userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Chưa đăng nhập"})
+		return
+	}
 
 	var user models.NguoiDung
 	if err := config.DB.First(&user, "id = ?", userID).Error; err != nil {
@@ -29,8 +34,9 @@ func GetProfile(c *gin.Context) {
 	c.JSON(http.StatusOK, user)
 }
 
-// 🔹 PUT /api/users/profile
-
+// =======================
+// PUT /api/users/profile
+// =======================
 type UpdateProfileInput struct {
 	HoTen  string                `form:"ho_ten" binding:"required"`
 	Email  string                `form:"email" binding:"required,email"`
@@ -44,25 +50,33 @@ func UpdateProfile(c *gin.Context) {
 		return
 	}
 
+	var user models.NguoiDung
+	if err := config.DB.First(&user, "id = ?", userID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy người dùng"})
+		return
+	}
+
 	var input UpdateProfileInput
 	if err := c.ShouldBind(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	// Kiểm tra email đã được dùng chưa
-	var existingUser models.NguoiDung
-	if err := config.DB.Where("email = ? AND id != ?", input.Email, userID).First(&existingUser).Error; err == nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Email đã được sử dụng"})
-		return
-	}
-
+	// Kiểm tra email đã được dùng chưa (chỉ local mới đổi email)
 	updateData := map[string]interface{}{
 		"ho_ten": input.HoTen,
-		"email":  input.Email,
 	}
 
-	// Nếu upload avatar mới
+	if user.Provider == "local" {
+		var existingUser models.NguoiDung
+		if err := config.DB.Where("email = ? AND id != ?", input.Email, userID).First(&existingUser).Error; err == nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Email đã được sử dụng"})
+			return
+		}
+		updateData["email"] = input.Email
+	}
+
+	// Upload avatar nếu có
 	if input.Avatar != nil {
 		avatarURL, err := utils.UploadAvatarToSupabase(input.Avatar, fmt.Sprintf("avatar_%s", userID))
 		if err != nil {
@@ -72,7 +86,7 @@ func UpdateProfile(c *gin.Context) {
 		updateData["avatar"] = avatarURL
 	}
 
-	// Cập nhật vào DB
+	// Cập nhật DB
 	tx := config.DB.Model(&models.NguoiDung{}).Where("id = ?", userID).Updates(updateData)
 	if tx.RowsAffected == 0 {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy người dùng"})
@@ -83,7 +97,6 @@ func UpdateProfile(c *gin.Context) {
 		return
 	}
 
-	// Gọi service tạo thông báo
 	message := fmt.Sprintf("Người dùng %s đã cập nhật hồ sơ cá nhân", input.HoTen)
 	if err := services.CreateNotification(userID, "", "update_profile", message); err != nil {
 		fmt.Println("❌ Lỗi khi tạo thông báo:", err)
@@ -95,8 +108,9 @@ func UpdateProfile(c *gin.Context) {
 	})
 }
 
-// 🔹 POST /api/users/change-password
-
+// =======================
+// POST /api/users/change-password
+// =======================
 type ChangePasswordInput struct {
 	MatKhauCu  string `json:"mat_khau_cu" binding:"required"`
 	MatKhauMoi string `json:"mat_khau_moi" binding:"required,min=6"`
@@ -105,15 +119,20 @@ type ChangePasswordInput struct {
 func ChangePassword(c *gin.Context) {
 	userID := c.GetString("user_id")
 
-	var input ChangePasswordInput
-	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
 	var user models.NguoiDung
 	if err := config.DB.First(&user, "id = ?", userID).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy người dùng"})
+		return
+	}
+
+	if user.Provider != "local" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Người dùng social login không thể đổi mật khẩu"})
+		return
+	}
+
+	var input ChangePasswordInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -132,7 +151,7 @@ func ChangePassword(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Đổi mật khẩu thất bại"})
 		return
 	}
-	// Tạo thông báo
+
 	message := fmt.Sprintf("Người dùng %s đã đổi mật khẩu", user.HoTen)
 	if err := services.CreateNotification(userID, "", "change_password", message); err != nil {
 		fmt.Println(" Lỗi khi tạo thông báo:", err)
@@ -141,8 +160,9 @@ func ChangePassword(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Đổi mật khẩu thành công"})
 }
 
-// 🔹 GET /api/admin/users
-
+// =======================
+// ADMIN APIs
+// =======================
 func GetAllUsers(c *gin.Context) {
 	role, _ := c.Get("vai_tro")
 	if role != "admin" {
@@ -162,8 +182,6 @@ func GetAllUsers(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"total": len(users), "users": users})
 }
-
-// PATCH /api/admin/users/:id/role
 
 func UpdateUserRole(c *gin.Context) {
 	role, _ := c.Get("vai_tro")
@@ -190,7 +208,6 @@ func UpdateUserRole(c *gin.Context) {
 		return
 	}
 
-	// Tạo thông báo
 	message := fmt.Sprintf("Người dùng %s đã được đổi vai trò thành %s", id, input.VaiTro)
 	if err := services.CreateNotification(id, "", "update_role", message); err != nil {
 		fmt.Println(" Lỗi khi tạo thông báo:", err)
@@ -198,8 +215,6 @@ func UpdateUserRole(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"message": "Cập nhật vai trò thành công"})
 }
-
-//  PATCH /api/admin/users/:id/toggle-active
 
 func ToggleUserActivation(c *gin.Context) {
 	role, _ := c.Get("vai_tro")
@@ -221,7 +236,6 @@ func ToggleUserActivation(c *gin.Context) {
 		return
 	}
 
-	// Tạo thông báo
 	statusText := "kích hoạt"
 	if !newStatus {
 		statusText = "tắt kích hoạt"

@@ -21,6 +21,8 @@ require (
 	gorm.io/gorm v1.31.0
 )
 
+require github.com/go-jose/go-jose/v3 v3.0.0 // indirect
+
 require (
 	cloud.google.com/go v0.120.0 // indirect
 	cloud.google.com/go/ai v0.8.0 // indirect
@@ -31,6 +33,7 @@ require (
 	filippo.io/edwards25519 v1.1.0 // indirect
 	github.com/bytedance/sonic v1.14.0 // indirect
 	github.com/bytedance/sonic/loader v0.3.0 // indirect
+	github.com/clerkinc/clerk-sdk-go v1.49.1
 	github.com/cloudwego/base64x v0.1.6 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.9 // indirect

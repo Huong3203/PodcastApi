@@ -17,36 +17,49 @@ import (
 )
 
 func main() {
+	// Load env khi không chạy Docker
 	if os.Getenv("DOCKER_ENV") != "true" {
 		_ = godotenv.Load()
 	}
 
 	config.ConnectDB()
 
-	// Auto migrate
-	config.DB.AutoMigrate(&models.Podcast{}, &models.Payment{})
+	// Auto migrate tất cả models ứng dụng
+	config.DB.AutoMigrate(
+		&models.NguoiDung{},
+		&models.Payment{},
+		&models.Podcast{},
+		&models.DanhGia{},
+		&models.FeaturedRating{},
+	)
 
+	// WebSocket background worker
 	go ws.HandleNotificationMessages()
 
 	r := gin.Default()
 
 	// CORS
 	r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:5173", "https://your-frontend-domain.com"},
+		AllowOrigins: []string{
+			"http://localhost:5173",
+			"http://localhost:3000",
+			"https://your-frontend-domain.com",
+		},
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
-		ExposeHeaders:    []string{"Content-Length"},
 		AllowCredentials: true,
 		MaxAge:           12 * time.Hour,
 	}))
 
+	// Setup routes
 	routes.SetupRoutes(r, config.DB)
 
+	// PORT
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
 	}
 
-	fmt.Printf("Server running on port %s\n", port)
+	fmt.Println("🚀 Server running on port " + port)
 	log.Fatal(r.Run(":" + port))
 }
