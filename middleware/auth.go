@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -17,8 +18,13 @@ var clerkClient clerk.Client
 
 // INIT CHỈ TẠO 1 LẦN
 func init() {
+	apiKey := os.Getenv("CLERK_SECRET_KEY")
+	if apiKey == "" {
+		panic("Thiếu biến môi trường CLERK_SECRET_KEY")
+	}
+
 	var err error
-	clerkClient, err = clerk.NewClient()
+	clerkClient, err = clerk.NewClient(apiKey)
 	if err != nil {
 		panic("Không thể tạo Clerk client: " + err.Error())
 	}
@@ -27,7 +33,6 @@ func init() {
 func AuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 
-		// Lấy token từ header
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
 			authHeader = c.GetHeader("X-Auth-Token")
@@ -48,9 +53,7 @@ func AuthMiddleware() gin.HandlerFunc {
 
 		token := parts[1]
 
-		// =====================================
-		// 1. Kiểm tra JWT local (ưu tiên)
-		// =====================================
+		// 1) Kiểm tra JWT local
 		claims, err := utils.VerifyToken(token)
 		if err == nil {
 			c.Set("user_id", claims.UserID)
@@ -60,9 +63,7 @@ func AuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		// =====================================
-		// 2. Kiểm tra token Clerk
-		// =====================================
+		// 2) Kiểm tra token Clerk
 		sess, err := clerkClient.VerifyToken(token)
 		if err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Token không hợp lệ (local + Clerk đều fail)"})
@@ -72,9 +73,7 @@ func AuthMiddleware() gin.HandlerFunc {
 
 		clerkID := sess.Subject
 
-		// =====================================
-		// 3. Lấy thông tin user từ Clerk API
-		// =====================================
+		// 3) Lấy thông tin user từ Clerk
 		clerkUser, err := clerkClient.Users().Read(clerkID)
 		if err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Không thể đọc user từ Clerk"})
@@ -82,15 +81,12 @@ func AuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		// Lấy email
 		email := ""
 		if len(clerkUser.EmailAddresses) > 0 {
 			email = clerkUser.EmailAddresses[0].EmailAddress
 		}
 
-		// =====================================
-		// 4. Lưu hoặc lấy user từ database
-		// =====================================
+		// 4) Lưu hoặc lấy user từ database
 		var user models.NguoiDung
 		result := config.DB.Where("id = ?", clerkID).First(&user)
 
@@ -105,7 +101,7 @@ func AuthMiddleware() gin.HandlerFunc {
 			config.DB.Create(&user)
 		}
 
-		// Gửi vào context để controller dùng
+		// Set context
 		c.Set("user_id", user.ID)
 		c.Set("email", user.Email)
 		c.Set("vai_tro", user.VaiTro)
