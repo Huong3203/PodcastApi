@@ -133,6 +133,11 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 		// Save
 		protectedPodcast.POST("/:id/save", controllers.ToggleLuuPodcast)
 		protectedPodcast.GET("/saved/me", controllers.GetMySavedPodcasts)
+
+		// ---------------- LISTENING HISTORY ----------------
+		protectedPodcast.POST("/:id/history", controllers.LuuLichSuNghe)
+		protectedPodcast.GET("/history/me", controllers.GetMyListeningHistory)
+
 	}
 
 	// ---------------- OTHER ----------------
