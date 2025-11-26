@@ -13,7 +13,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// LƯU LỊCH SỬ NGHE
+// ==================== LƯU LỊCH SỬ NGHE ====================
 func LuuLichSuNghe(c *gin.Context) {
 	var body struct {
 		PodcastID string `json:"podcast_id"`
@@ -36,6 +36,7 @@ func LuuLichSuNghe(c *gin.Context) {
 		First(&history).Error
 
 	if err == gorm.ErrRecordNotFound {
+		// Nếu chưa có lịch sử, tạo mới
 		history = models.LichSuNghe{
 			ID:          uuid.New().String(),
 			NguoiDungID: userID,
@@ -45,13 +46,14 @@ func LuuLichSuNghe(c *gin.Context) {
 		}
 		config.DB.Create(&history)
 	} else {
+		// Cập nhật vị trí và thời gian nghe
 		config.DB.Model(&history).Updates(models.LichSuNghe{
 			ViTri:    body.ViTri,
 			NgayNghe: time.Now(),
 		})
 	}
 
-	// 🔹 Tạo thông báo (nếu muốn ghi lại lịch sử nghe)
+	// Tạo thông báo realtime (nếu muốn)
 	message := fmt.Sprintf("Người dùng đã nghe podcast %s", body.PodcastID)
 	if err := services.CreateNotification(userID, body.PodcastID, "listened", message); err != nil {
 		fmt.Println("Lỗi khi tạo thông báo:", err)
@@ -60,7 +62,7 @@ func LuuLichSuNghe(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Đã lưu lịch sử nghe"})
 }
 
-// YÊU THÍCH PODCAST
+// ==================== YÊU THÍCH PODCAST ====================
 func ToggleYeuThichPodcast(c *gin.Context) {
 	podcastID := c.Param("id")
 	userID := c.GetString("user_id")
@@ -79,7 +81,6 @@ func ToggleYeuThichPodcast(c *gin.Context) {
 		config.DB.Model(&models.Podcast{}).Where("id = ?", podcastID).
 			UpdateColumn("luot_yeu_thich", gorm.Expr("luot_yeu_thich + 1"))
 
-		// 🔹 Tạo thông báo realtime
 		message := fmt.Sprintf("Người dùng %s đã yêu thích podcast %s", userID, podcastID)
 		services.CreateNotification(userID, podcastID, "favorite", message)
 
@@ -92,14 +93,13 @@ func ToggleYeuThichPodcast(c *gin.Context) {
 	config.DB.Model(&models.Podcast{}).Where("id = ?", podcastID).
 		UpdateColumn("luot_yeu_thich", gorm.Expr("luot_yeu_thich - 1"))
 
-	// 🔹 Tạo thông báo realtime
 	message := fmt.Sprintf("Người dùng %s đã bỏ yêu thích podcast %s", userID, podcastID)
 	services.CreateNotification(userID, podcastID, "unfavorite", message)
 
 	c.JSON(http.StatusOK, gin.H{"message": "Đã bỏ yêu thích"})
 }
 
-// LƯU PODCAST VÀO THƯ VIỆN
+// ==================== LƯU PODCAST VÀO THƯ VIỆN ====================
 func ToggleLuuPodcast(c *gin.Context) {
 	podcastID := c.Param("id")
 	userID := c.GetString("user_id")
@@ -118,7 +118,6 @@ func ToggleLuuPodcast(c *gin.Context) {
 		config.DB.Model(&models.Podcast{}).Where("id = ?", podcastID).
 			UpdateColumn("luot_luu", gorm.Expr("luot_luu + 1"))
 
-		// 🔹 Tạo thông báo realtime
 		message := fmt.Sprintf("Người dùng %s đã lưu podcast %s vào thư viện", userID, podcastID)
 		services.CreateNotification(userID, podcastID, "saved", message)
 
@@ -131,24 +130,23 @@ func ToggleLuuPodcast(c *gin.Context) {
 	config.DB.Model(&models.Podcast{}).Where("id = ?", podcastID).
 		UpdateColumn("luot_luu", gorm.Expr("luot_luu - 1"))
 
-	// 🔹 Tạo thông báo realtime
 	message := fmt.Sprintf("Người dùng %s đã bỏ lưu podcast %s", userID, podcastID)
 	services.CreateNotification(userID, podcastID, "unsaved", message)
 
 	c.JSON(http.StatusOK, gin.H{"message": "Đã bỏ lưu"})
 }
 
-// LẤY DANH SÁCH YÊU THÍCH CỦA NGƯỜI DÙNG
+// ==================== LẤY DANH SÁCH YÊU THÍCH ====================
 func GetMyFavoritePodcasts(c *gin.Context) {
 	userID := c.GetString("user_id")
 
 	var list []models.PodcastYeuThich
-	config.DB.Preload("Podcast").Preload("Podcast.TaiLieu").Where("nguoi_dung_id = ?", userID).
+	config.DB.Preload("Podcast").Preload("Podcast.TaiLieu").
+		Where("nguoi_dung_id = ?", userID).
 		Order("ngay_thich DESC").Find(&list)
 
 	var result []models.Podcast
 	for _, item := range list {
-		// Gán TomTat ra root để frontend không cần nested
 		item.Podcast.TomTat = item.Podcast.TaiLieu.TomTat
 		result = append(result, item.Podcast)
 	}
@@ -156,12 +154,13 @@ func GetMyFavoritePodcasts(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": result})
 }
 
-// LẤY DANH SÁCH ĐÃ LƯU
+// ==================== LẤY DANH SÁCH ĐÃ LƯU ====================
 func GetMySavedPodcasts(c *gin.Context) {
 	userID := c.GetString("user_id")
 
 	var list []models.PodcastLuu
-	config.DB.Preload("Podcast").Preload("Podcast.TaiLieu").Where("nguoi_dung_id = ?", userID).
+	config.DB.Preload("Podcast").Preload("Podcast.TaiLieu").
+		Where("nguoi_dung_id = ?", userID).
 		Order("ngay_luu DESC").Find(&list)
 
 	var result []models.Podcast
@@ -173,7 +172,7 @@ func GetMySavedPodcasts(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": result})
 }
 
-// LẤY LỊCH SỬ NGHE
+// ==================== LẤY LỊCH SỬ NGHE ====================
 func GetMyListeningHistory(c *gin.Context) {
 	userID := c.GetString("user_id")
 	if userID == "" {
@@ -191,7 +190,6 @@ func GetMyListeningHistory(c *gin.Context) {
 		return
 	}
 
-	// Tạo struct trả về cho frontend
 	type ListeningHistoryDTO struct {
 		ID           string    `json:"id"`
 		PodcastID    string    `json:"podcast_id"`
@@ -219,7 +217,7 @@ func GetMyListeningHistory(c *gin.Context) {
 			MoTa:         p.MoTa,
 			HinhAnh:      p.HinhAnhDaiDien,
 			TomTat:       tomtat,
-			TenDanhMuc:   p.DanhMuc.TenDanhMuc, // nếu bạn có field TenDanhMuc
+			TenDanhMuc:   p.DanhMuc.TenDanhMuc,
 			ViTriDaNghe:  h.ViTri,
 			ThoiGianNghe: h.NgayNghe,
 		})
