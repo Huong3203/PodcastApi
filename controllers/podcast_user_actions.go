@@ -191,14 +191,38 @@ func GetMyListeningHistory(c *gin.Context) {
 		return
 	}
 
-	// Chuyển về danh sách Podcast trực tiếp, gán TomTat
-	var result []models.Podcast
+	// Tạo struct trả về cho frontend
+	type ListeningHistoryDTO struct {
+		ID           string    `json:"id"`
+		PodcastID    string    `json:"podcast_id"`
+		TieuDe       string    `json:"tieu_de"`
+		MoTa         string    `json:"mo_ta,omitempty"`
+		HinhAnh      string    `json:"hinh_anh_dai_dien,omitempty"`
+		TomTat       string    `json:"tom_tat,omitempty"`
+		TenDanhMuc   string    `json:"ten_danh_muc,omitempty"`
+		ViTriDaNghe  int       `json:"vi_tri_da_nghe"`
+		ThoiGianNghe time.Time `json:"thoi_gian_nghe"`
+	}
+
+	var result []ListeningHistoryDTO
 	for _, h := range history {
 		p := h.Podcast
+		tomtat := ""
 		if p.TaiLieu.ID != "" {
-			p.TomTat = p.TaiLieu.TomTat
+			tomtat = p.TaiLieu.TomTat
 		}
-		result = append(result, p)
+
+		result = append(result, ListeningHistoryDTO{
+			ID:           h.ID,
+			PodcastID:    p.ID,
+			TieuDe:       p.TieuDe,
+			MoTa:         p.MoTa,
+			HinhAnh:      p.HinhAnhDaiDien,
+			TomTat:       tomtat,
+			TenDanhMuc:   p.DanhMuc.TenDanhMuc, // nếu bạn có field TenDanhMuc
+			ViTriDaNghe:  h.ViTri,
+			ThoiGianNghe: h.NgayNghe,
+		})
 	}
 
 	c.JSON(http.StatusOK, gin.H{"data": result})
