@@ -176,15 +176,30 @@ func GetMySavedPodcasts(c *gin.Context) {
 // LẤY LỊCH SỬ NGHE
 func GetMyListeningHistory(c *gin.Context) {
 	userID := c.GetString("user_id")
-
-	var list []models.LichSuNghe
-	config.DB.Preload("Podcast").Preload("Podcast.TaiLieu").Where("nguoi_dung_id = ?", userID).
-		Order("ngay_nghe DESC").Find(&list)
-
-	// Gán TomTat
-	for i := range list {
-		list[i].Podcast.TomTat = list[i].Podcast.TaiLieu.TomTat
+	if userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Bạn cần đăng nhập"})
+		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"data": list})
+	var history []models.LichSuNghe
+	err := config.DB.Preload("Podcast.TaiLieu").Preload("Podcast.DanhMuc").
+		Where("nguoi_dung_id = ?", userID).
+		Order("ngay_nghe DESC").
+		Find(&history).Error
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi khi lấy lịch sử nghe", "detail": err.Error()})
+		return
+	}
+
+	// Chuyển về danh sách Podcast trực tiếp, gán TomTat
+	var result []models.Podcast
+	for _, h := range history {
+		p := h.Podcast
+		if p.TaiLieu.ID != "" {
+			p.TomTat = p.TaiLieu.TomTat
+		}
+		result = append(result, p)
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": result})
 }

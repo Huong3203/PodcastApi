@@ -9,6 +9,6 @@ type LichSuNghe struct {
 	ViTri       int       `gorm:"type:int;default:0" json:"vi_tri"`
 	NgayNghe    time.Time `gorm:"autoCreateTime" json:"ngay_nghe"`
 
-	NguoiDung NguoiDung `gorm:"foreignKey:NguoiDungID" json:"nguoi_dung,omitempty"`
-	Podcast   Podcast   `gorm:"foreignKey:PodcastID" json:"podcast,omitempty"`
+	NguoiDung NguoiDung `gorm:"foreignKey:NguoiDungID;references:ID" json:"nguoi_dung,omitempty"`
+	Podcast   Podcast   `gorm:"foreignKey:PodcastID;references:ID" json:"podcast,omitempty"`
 }
