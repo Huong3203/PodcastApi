@@ -53,7 +53,7 @@ func Register(c *gin.Context) {
 		return
 	}
 
-	token, _ := utils.GenerateToken(newUser.ID, newUser.VaiTro, "local")
+	token, _ := utils.GenerateToken(newUser.ID, newUser.VaiTro)
 	newUser.MatKhau = ""
 
 	c.JSON(http.StatusCreated, gin.H{
@@ -86,7 +86,7 @@ func Login(c *gin.Context) {
 		return
 	}
 
-	token, _ := utils.GenerateToken(user.ID, user.VaiTro, "local")
+	token, _ := utils.GenerateToken(user.ID, user.VaiTro)
 	user.MatKhau = ""
 
 	c.JSON(http.StatusOK, gin.H{
