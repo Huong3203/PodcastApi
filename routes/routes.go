@@ -20,6 +20,8 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 	{
 		auth.POST("/register", controllers.Register)
 		auth.POST("/login", controllers.Login)
+
+		// Login với Google thông qua Clerk
 		auth.POST("/google/clerk", controllers.LoginWithClerk)
 	}
 

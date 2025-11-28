@@ -11,13 +11,13 @@ import (
 type JWTClaims struct {
 	UserID   string `json:"user_id"`
 	Role     string `json:"role"`
-	Provider string `json:"provider"` // local / clerk
+	Provider string `json:"provider"`
 	jwt.RegisteredClaims
 }
 
 func GenerateToken(userID, role, provider string) (string, error) {
-	jwtKey := []byte(os.Getenv("JWT_SECRET"))
-	if len(jwtKey) == 0 {
+	key := []byte(os.Getenv("JWT_SECRET"))
+	if len(key) == 0 {
 		return "", errors.New("JWT_SECRET không được thiết lập")
 	}
 
@@ -32,25 +32,5 @@ func GenerateToken(userID, role, provider string) (string, error) {
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString(jwtKey)
-}
-
-func VerifyToken(tokenStr string) (*JWTClaims, error) {
-	jwtKey := []byte(os.Getenv("JWT_SECRET"))
-	if len(jwtKey) == 0 {
-		return nil, errors.New("JWT_SECRET không được thiết lập")
-	}
-
-	token, err := jwt.ParseWithClaims(tokenStr, &JWTClaims{}, func(token *jwt.Token) (interface{}, error) {
-		return jwtKey, nil
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	if claims, ok := token.Claims.(*JWTClaims); ok && token.Valid {
-		return claims, nil
-	}
-
-	return nil, errors.New("Token không hợp lệ")
+	return token.SignedString(key)
 }

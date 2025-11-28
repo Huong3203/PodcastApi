@@ -1,7 +1,6 @@
 package controllers
 
 import (
-	"fmt"
 	"net/http"
 
 	"github.com/Huong3203/APIPodcast/config"
@@ -12,74 +11,77 @@ import (
 )
 
 type ClerkLoginInput struct {
-	SessionToken string `json:"session_token" binding:"required"`
+	SessionID string `json:"session_id" binding:"required"`
 }
 
 func LoginWithClerk(c *gin.Context) {
-
 	var input ClerkLoginInput
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "session_token bắt buộc"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "session_id bắt buộc"})
 		return
 	}
 
-	fmt.Println("📥 session_token:", input.SessionToken)
-
-	// 1. Verify session token → get session
-	sess, err := middleware.ClerkClient.Sessions().VerifyToken(input.SessionToken)
+	// 1. Lấy session từ Clerk
+	sess, err := middleware.ClerkClient.Sessions().Read(input.SessionID)
 	if err != nil {
-		fmt.Println("❌ Clerk verify lỗi:", err)
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Token không hợp lệ"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Session không hợp lệ"})
 		return
 	}
 
-	fmt.Println("✅ Verify token OK — Session:", sess.ID, "User:", sess.UserID)
-
-	// 2. Lấy user
+	// 2. Lấy user từ Clerk
 	clerkUser, err := middleware.ClerkClient.Users().Read(sess.UserID)
 	if err != nil {
-		fmt.Println("❌ Lỗi lấy user:", err)
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Không lấy được user"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Không lấy được user từ Clerk"})
 		return
 	}
 
+	// 3. Lấy email
 	email := ""
 	if len(clerkUser.EmailAddresses) > 0 {
 		email = clerkUser.EmailAddresses[0].EmailAddress
 	}
 
-	fullName := ""
-	if clerkUser.FirstName != nil && clerkUser.LastName != nil {
-		fullName = *clerkUser.FirstName + " " + *clerkUser.LastName
+	// 4. Lấy tên
+	hoTen := ""
+	if clerkUser.FirstName != nil {
+		hoTen = *clerkUser.FirstName
+	}
+	if clerkUser.LastName != nil {
+		hoTen += " " + *clerkUser.LastName
 	}
 
+	// 5. Avatar
 	avatar := clerkUser.ProfileImageURL
 
-	// 3. Tạo user nếu chưa có
+	// 6. Kiểm tra DB
 	var user models.NguoiDung
 	result := config.DB.Where("id = ?", clerkUser.ID).First(&user)
 
-	if result.Error != nil {
+	if result.Error != nil { // Chưa có → tạo mới
 		user = models.NguoiDung{
 			ID:       clerkUser.ID,
 			Email:    email,
-			HoTen:    fullName,
-			Avatar:   avatar,
 			VaiTro:   "user",
 			KichHoat: true,
 			Provider: "clerk",
+			HoTen:    hoTen,
+			Avatar:   avatar,
 		}
-		config.DB.Create(&user)
+
+		if err := config.DB.Create(&user).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể tạo user"})
+			return
+		}
 	}
 
-	// 4. Tạo JWT
+	// 7. Tạo JWT
 	token, err := utils.GenerateToken(user.ID, user.VaiTro, "clerk")
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không tạo được token"})
 		return
 	}
 
-	// 5. Trả về
+	// 8. Trả về client
 	c.JSON(http.StatusOK, gin.H{
 		"user": gin.H{
 			"id":      user.ID,
