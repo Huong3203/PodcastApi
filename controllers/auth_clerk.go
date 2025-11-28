@@ -28,7 +28,6 @@ func LoginWithClerk(c *gin.Context) {
 	// 1. Lấy session từ Clerk
 	sess, err := middleware.ClerkClient.Sessions().Read(input.SessionID)
 	if err != nil {
-		fmt.Println("❌ Clerk session error:", err)
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Session không hợp lệ"})
 		return
 	}
@@ -36,18 +35,16 @@ func LoginWithClerk(c *gin.Context) {
 	// 2. Lấy user từ Clerk
 	clerkUser, err := middleware.ClerkClient.Users().Read(sess.UserID)
 	if err != nil {
-		fmt.Println("❌ Clerk user error:", err)
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Không lấy được user từ Clerk"})
 		return
 	}
 
-	// 3. Lấy email
+	// 3. Lấy email, tên, avatar
 	email := ""
 	if len(clerkUser.EmailAddresses) > 0 {
 		email = clerkUser.EmailAddresses[0].EmailAddress
 	}
 
-	// 4. Lấy tên + avatar
 	hoTen := ""
 	if clerkUser.FirstName != nil {
 		hoTen += *clerkUser.FirstName
@@ -58,23 +55,22 @@ func LoginWithClerk(c *gin.Context) {
 		}
 		hoTen += *clerkUser.LastName
 	}
+
 	avatar := clerkUser.ProfileImageURL
 
-	// 5. Kiểm tra user theo email trước
+	// 4. Kiểm tra user theo email
 	var user models.NguoiDung
-	result := config.DB.Where("email = ?", email).First(&user)
-
-	if result.Error != nil {
-		// Nếu không phải RecordNotFound → lỗi DB
-		if result.Error != nil && result.Error != config.DB.Error && !gorm.IsRecordNotFoundError(result.Error) {
+	err = config.DB.Where("email = ?", email).First(&user).Error
+	if err != nil {
+		if err != nil && !IsRecordNotFound(err) {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi DB"})
 			return
 		}
 
-		// 🔹 User chưa tồn tại → tạo mới
+		// User chưa tồn tại → tạo mới
 		fmt.Println("ℹ User chưa tồn tại → tạo mới")
 		user = models.NguoiDung{
-			ID:       clerkUser.ID,
+			ID:       clerkUser.ID, // dùng ID Clerk
 			Email:    email,
 			HoTen:    hoTen,
 			Avatar:   avatar,
@@ -92,20 +88,20 @@ func LoginWithClerk(c *gin.Context) {
 			return
 		}
 	} else {
-		// 🔹 User đã tồn tại → update thông tin avatar / tên nếu cần
+		// User đã tồn tại → update tên + avatar
 		user.HoTen = hoTen
 		user.Avatar = avatar
 		config.DB.Save(&user)
 	}
 
-	// 6. Tạo JWT
+	// 5. Tạo JWT
 	token, err := utils.GenerateToken(user.ID, user.VaiTro)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể tạo token"})
 		return
 	}
 
-	// 7. Trả kết quả
+	// 6. Trả kết quả
 	c.JSON(http.StatusOK, gin.H{
 		"user": gin.H{
 			"id":      user.ID,
@@ -116,4 +112,10 @@ func LoginWithClerk(c *gin.Context) {
 		},
 		"token": token,
 	})
+}
+
+// helper kiểm tra RecordNotFound
+func IsRecordNotFound(err error) bool {
+	// Nếu dùng GORM v2
+	return err != nil && err.Error() == "record not found"
 }
