@@ -3,6 +3,7 @@ package controllers
 import (
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/Huong3203/APIPodcast/config"
 	"github.com/Huong3203/APIPodcast/middleware"
@@ -16,7 +17,6 @@ type ClerkLoginInput struct {
 }
 
 func LoginWithClerk(c *gin.Context) {
-
 	fmt.Println("🔵 [LoginWithClerk] Bắt đầu đăng nhập Clerk")
 
 	var input ClerkLoginInput
@@ -25,7 +25,7 @@ func LoginWithClerk(c *gin.Context) {
 		return
 	}
 
-	// 1. Get session từ Clerk
+	// 1. Lấy session từ Clerk
 	sess, err := middleware.ClerkClient.Sessions().Read(input.SessionID)
 	if err != nil {
 		fmt.Println("❌ Clerk session error:", err)
@@ -53,16 +53,25 @@ func LoginWithClerk(c *gin.Context) {
 		hoTen += *clerkUser.FirstName
 	}
 	if clerkUser.LastName != nil {
-		hoTen += " " + *clerkUser.LastName
+		if hoTen != "" {
+			hoTen += " "
+		}
+		hoTen += *clerkUser.LastName
 	}
-
 	avatar := clerkUser.ProfileImageURL
 
-	// 5. Kiểm tra / tạo user trong DB
+	// 5. Kiểm tra user theo email trước
 	var user models.NguoiDung
-	result := config.DB.Where("id = ?", clerkUser.ID).First(&user)
+	result := config.DB.Where("email = ?", email).First(&user)
 
 	if result.Error != nil {
+		// Nếu không phải RecordNotFound → lỗi DB
+		if result.Error != nil && result.Error != config.DB.Error && !gorm.IsRecordNotFoundError(result.Error) {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi DB"})
+			return
+		}
+
+		// 🔹 User chưa tồn tại → tạo mới
 		fmt.Println("ℹ User chưa tồn tại → tạo mới")
 		user = models.NguoiDung{
 			ID:       clerkUser.ID,
@@ -72,14 +81,24 @@ func LoginWithClerk(c *gin.Context) {
 			VaiTro:   "user",
 			KichHoat: true,
 			Provider: "clerk",
+			NgayTao:  time.Now(),
 		}
+
 		if err := config.DB.Create(&user).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể tạo user mới"})
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error":  "Không thể tạo user mới",
+				"detail": err.Error(),
+			})
 			return
 		}
+	} else {
+		// 🔹 User đã tồn tại → update thông tin avatar / tên nếu cần
+		user.HoTen = hoTen
+		user.Avatar = avatar
+		config.DB.Save(&user)
 	}
 
-	// 6. Tạo JWT (đã sửa lỗi tham số)
+	// 6. Tạo JWT
 	token, err := utils.GenerateToken(user.ID, user.VaiTro)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể tạo token"})
