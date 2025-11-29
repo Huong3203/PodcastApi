@@ -1,35 +1,16 @@
 package middleware
 
 import (
-	"errors"
 	"net/http"
-	"os"
 	"strings"
 
 	"github.com/Huong3203/APIPodcast/config"
 	"github.com/Huong3203/APIPodcast/models"
 	"github.com/Huong3203/APIPodcast/utils"
-	"github.com/clerkinc/clerk-sdk-go/clerk"
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
 )
 
-var ClerkClient clerk.Client
-
-func init() {
-	secret := os.Getenv("CLERK_SECRET_KEY")
-	if secret == "" {
-		panic("Thiếu CLERK_SECRET_KEY")
-	}
-
-	var err error
-	ClerkClient, err = clerk.NewClient(secret)
-	if err != nil {
-		panic("Không thể khởi tạo Clerk client: " + err.Error())
-	}
-}
-
-// AuthMiddleware: bắt buộc phải có token (JWT local hoặc Clerk)
+// AuthMiddleware: bắt buộc phải có JWT token local
 func AuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
@@ -50,64 +31,32 @@ func AuthMiddleware() gin.HandlerFunc {
 		}
 		token := parts[1]
 
-		// 1️⃣ Thử JWT local trước
-		if claims, err := utils.VerifyToken(token); err == nil {
-			c.Set("user_id", claims.UserID)
-			c.Set("role", claims.Role)
-			c.Set("provider", "local")
-
-			// ✅ Kiểm tra user có bị khoá không
-			var user models.NguoiDung
-			if err := config.DB.First(&user, "id = ?", claims.UserID).Error; err == nil {
-				if !user.KichHoat {
-					c.JSON(http.StatusForbidden, gin.H{"error": "Tài khoản đã bị tạm khóa"})
-					c.Abort()
-					return
-				}
-			}
-			c.Next()
-			return
-		}
-
-		// 2️⃣ Fallback: Verify Clerk JWT token
-		// ✅ Dùng Verify() thay vì Read() để xử lý JWT token
-		session, err := ClerkClient.Sessions().Verify(token, "")
+		// ✅ Verify JWT local token
+		claims, err := utils.VerifyToken(token)
 		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Token không hợp lệ"})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Token không hợp lệ hoặc đã hết hạn"})
 			c.Abort()
 			return
 		}
 
-		clerkID := session.UserID
-		clerkUser, err := ClerkClient.Users().Read(clerkID)
-		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Không lấy được user từ Clerk"})
-			c.Abort()
-			return
-		}
-
-		email := ""
-		if len(clerkUser.EmailAddresses) > 0 {
-			email = clerkUser.EmailAddresses[0].EmailAddress
-		}
-
-		// ✅ Tìm hoặc tạo user trong DB
+		// ✅ Kiểm tra user có bị khoá không
 		var user models.NguoiDung
-		err = config.DB.First(&user, "id = ?", clerkID).Error
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			user = models.NguoiDung{
-				ID:       clerkUser.ID,
-				Email:    email,
-				VaiTro:   "user",
-				Provider: "clerk",
-				KichHoat: true,
-			}
-			config.DB.Create(&user)
+		if err := config.DB.First(&user, "id = ?", claims.UserID).Error; err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Người dùng không tồn tại"})
+			c.Abort()
+			return
 		}
 
-		c.Set("user_id", user.ID)
+		if !user.KichHoat {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Tài khoản đã bị tạm khóa"})
+			c.Abort()
+			return
+		}
+
+		// ✅ Set user info vào context
+		c.Set("user_id", claims.UserID)
+		c.Set("role", claims.Role)
 		c.Set("email", user.Email)
-		c.Set("role", user.VaiTro)
 		c.Set("provider", user.Provider)
 		c.Next()
 	}
@@ -132,51 +81,24 @@ func OptionalAuthMiddleware() gin.HandlerFunc {
 		}
 		token := parts[1]
 
-		// 1️⃣ Thử JWT local
-		if claims, err := utils.VerifyToken(token); err == nil {
-			c.Set("user_id", claims.UserID)
-			c.Set("role", claims.Role)
-			c.Set("provider", "local")
-			c.Next()
-			return
-		}
-
-		// 2️⃣ Thử Clerk JWT token
-		// ✅ Dùng Verify() thay vì Read()
-		session, err := ClerkClient.Sessions().Verify(token, "")
+		// ✅ Verify JWT local token
+		claims, err := utils.VerifyToken(token)
 		if err != nil {
 			c.Next()
 			return
 		}
 
-		clerkID := session.UserID
-		clerkUser, err := ClerkClient.Users().Read(clerkID)
-		if err != nil {
-			c.Next()
-			return
-		}
-
-		email := ""
-		if len(clerkUser.EmailAddresses) > 0 {
-			email = clerkUser.EmailAddresses[0].EmailAddress
-		}
-
+		// ✅ Lấy thông tin user từ DB
 		var user models.NguoiDung
-		err = config.DB.First(&user, "id = ?", clerkID).Error
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			user = models.NguoiDung{
-				ID:       clerkUser.ID,
-				Email:    email,
-				VaiTro:   "user",
-				Provider: "clerk",
-				KichHoat: true,
-			}
-			config.DB.Create(&user)
+		if err := config.DB.First(&user, "id = ?", claims.UserID).Error; err != nil {
+			c.Next()
+			return
 		}
 
-		c.Set("user_id", user.ID)
+		// ✅ Set user info vào context
+		c.Set("user_id", claims.UserID)
+		c.Set("role", claims.Role)
 		c.Set("email", user.Email)
-		c.Set("role", user.VaiTro)
 		c.Set("provider", user.Provider)
 		c.Next()
 	}
