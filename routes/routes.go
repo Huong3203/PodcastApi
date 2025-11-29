@@ -22,7 +22,7 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 		auth.POST("/login", controllers.Login)
 
 		// Route cho Google login qua Clerk
-		auth.POST("/google/clerk", controllers.LoginWithClerkGoogle)
+		auth.POST("/google/clerk", controllers.ClerkLogin)
 	}
 
 	// ---------------- MOMO VIP ----------------
