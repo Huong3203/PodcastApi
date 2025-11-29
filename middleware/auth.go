@@ -1,17 +1,17 @@
 package middleware
 
 import (
+	"errors"
 	"net/http"
 	"os"
 	"strings"
 
-	"github.com/gin-gonic/gin"
-
 	"github.com/Huong3203/APIPodcast/config"
 	"github.com/Huong3203/APIPodcast/models"
 	"github.com/Huong3203/APIPodcast/utils"
-
 	"github.com/clerkinc/clerk-sdk-go/clerk"
+	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 var ClerkClient clerk.Client
@@ -29,30 +29,28 @@ func init() {
 	}
 }
 
+// AuthMiddleware xác thực JWT local hoặc token Clerk
 func AuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		token := c.GetHeader("Authorization")
-		if token == "" {
-			token = c.GetHeader("X-Auth-Token")
+		authHeader := c.GetHeader("Authorization")
+		if authHeader == "" {
+			authHeader = c.GetHeader("X-Auth-Token")
 		}
-		if token == "" {
+		if authHeader == "" {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Thiếu token"})
 			c.Abort()
 			return
 		}
 
-		parts := strings.Split(token, " ")
+		parts := strings.Split(authHeader, " ")
 		if len(parts) != 2 || parts[0] != "Bearer" {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Token không đúng định dạng"})
 			c.Abort()
 			return
 		}
+		token := parts[1]
 
-		token = parts[1]
-
-		// 1. ---------------------------
-		// KIỂM TRA JWT LOCAL TRƯỚC
-		// ---------------------------
+		// 1️⃣ Kiểm tra JWT local
 		if claims, err := utils.VerifyToken(token); err == nil {
 			c.Set("user_id", claims.UserID)
 			c.Set("vai_tro", claims.Role)
@@ -61,9 +59,7 @@ func AuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		// 2. ---------------------------
-		// FALLBACK: XÁC THỰC TOKEN CLERK
-		// ---------------------------
+		// 2️⃣ Kiểm tra token Clerk
 		sess, err := ClerkClient.Sessions().VerifyToken(token)
 		if err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Token không hợp lệ"})
@@ -71,9 +67,9 @@ func AuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		clerkID := sess.UserID
+		clerkID := sess.Subject // Đây mới là userID đúng của Clerk
 
-		// 3. Lấy User Clerk
+		// 3️⃣ Lấy thông tin user từ Clerk
 		clerkUser, err := ClerkClient.Users().Read(clerkID)
 		if err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Không lấy được user từ Clerk"})
@@ -86,11 +82,11 @@ func AuthMiddleware() gin.HandlerFunc {
 			email = clerkUser.EmailAddresses[0].EmailAddress
 		}
 
-		// 4. Lưu user vào DB nếu chưa có
+		// 4️⃣ Lưu hoặc lấy user trong DB
 		var user models.NguoiDung
 		err = config.DB.Where("id = ?", clerkID).First(&user).Error
-
-		if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			// Chưa có user → tạo mới
 			user = models.NguoiDung{
 				ID:       clerkID,
 				Email:    email,
@@ -99,9 +95,14 @@ func AuthMiddleware() gin.HandlerFunc {
 				KichHoat: true,
 			}
 			config.DB.Create(&user)
+		} else if err != nil {
+			// Lỗi DB khác
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi database"})
+			c.Abort()
+			return
 		}
 
-		// Set vào context
+		// 5️⃣ Set context
 		c.Set("user_id", user.ID)
 		c.Set("email", user.Email)
 		c.Set("vai_tro", user.VaiTro)
