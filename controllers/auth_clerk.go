@@ -10,79 +10,114 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-type ClerkLoginInput struct {
-	SessionID string `json:"session_id" binding:"required"`
-	Email     string `json:"email" binding:"required"`
-	HoTen     string `json:"ho_ten"`
-	Avatar    string `json:"avatar"`
+// 🔹 Struct nhận dữ liệu từ frontend khi login Google qua Clerk
+type ClerkGoogleLoginInput struct {
+	IDToken string `json:"id_token" binding:"required"` // ✅ Nhận token từ Clerk (frontend gửi)
+	Email   string `json:"email" binding:"required"`
+	HoTen   string `json:"ho_ten"` // Tên người dùng (optional)
+	Avatar  string `json:"avatar"` // Avatar URL (optional)
 }
 
-func LoginWithClerk(c *gin.Context) {
-	var input ClerkLoginInput
+// 🔹 Handler: Login Google thông qua Clerk
+func LoginWithClerkGoogle(c *gin.Context) {
+	var input ClerkGoogleLoginInput
+
+	// ✅ Parse JSON từ frontend
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Thiếu dữ liệu"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Thiếu dữ liệu bắt buộc (id_token hoặc email)"})
 		return
 	}
 
-	sess, err := middleware.ClerkClient.Sessions().Read(input.SessionID)
+	// ✅ Verify token từ Clerk bằng Sessions().Read
+	// input.IDToken chính là sessionToken từ Clerk
+	session, err := middleware.ClerkClient.Sessions().Read(input.IDToken)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Session không hợp lệ"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Token Clerk không hợp lệ hoặc đã hết hạn"})
 		return
 	}
 
-	clerkUser, err := middleware.ClerkClient.Users().Read(sess.UserID)
+	// ✅ Lấy thông tin user từ Clerk
+	clerkUserID := session.UserID
+	clerkUser, err := middleware.ClerkClient.Users().Read(clerkUserID)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Không lấy được thông tin user"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Không lấy được thông tin user từ Clerk"})
 		return
 	}
 
+	// ✅ Xử lý email (ưu tiên input, fallback Clerk)
 	email := input.Email
 	if email == "" && len(clerkUser.EmailAddresses) > 0 {
 		email = clerkUser.EmailAddresses[0].EmailAddress
 	}
+	if email == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Không tìm thấy email"})
+		return
+	}
 
+	// ✅ Xử lý tên (ưu tiên input, fallback Clerk)
 	hoTen := input.HoTen
 	if hoTen == "" {
 		if clerkUser.FirstName != nil {
 			hoTen = *clerkUser.FirstName
 		}
 		if clerkUser.LastName != nil {
-			hoTen += " " + *clerkUser.LastName
+			if hoTen != "" {
+				hoTen += " "
+			}
+			hoTen += *clerkUser.LastName
 		}
 	}
 
+	// ✅ Xử lý avatar (ưu tiên input, fallback Clerk)
 	avatar := input.Avatar
 	if avatar == "" {
 		avatar = clerkUser.ProfileImageURL
 	}
 
+	// ✅ Tìm hoặc tạo user trong DB
 	var user models.NguoiDung
 	err = config.DB.First(&user, "email = ?", email).Error
 	if err != nil {
+		// ✅ User chưa tồn tại → Tạo mới
 		user = models.NguoiDung{
-			ID:       clerkUser.ID,
+			ID:       clerkUser.ID, // Dùng Clerk ID làm primary key
 			Email:    email,
 			HoTen:    hoTen,
 			Avatar:   avatar,
-			VaiTro:   "user",
-			Provider: "clerk",
-			KichHoat: true,
+			VaiTro:   "user",  // Role mặc định
+			Provider: "clerk", // Đánh dấu đăng nhập qua Clerk
+			KichHoat: true,    // Tài khoản active
 		}
-		config.DB.Create(&user)
+		if err := config.DB.Create(&user).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể tạo tài khoản"})
+			return
+		}
 	} else {
+		// ✅ User đã tồn tại → Cập nhật thông tin
 		user.HoTen = hoTen
 		user.Avatar = avatar
-		config.DB.Save(&user)
+		if err := config.DB.Save(&user).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể cập nhật thông tin"})
+			return
+		}
 	}
 
+	// ✅ Tạo JWT token local để frontend sử dụng
 	token, err := utils.GenerateToken(user.ID, user.VaiTro)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể tạo token"})
 		return
 	}
 
+	// ✅ Trả về token + user info
 	c.JSON(http.StatusOK, gin.H{
-		"user":  user,
 		"token": token,
+		"user": gin.H{
+			"id":      user.ID,
+			"email":   user.Email,
+			"ho_ten":  user.HoTen,
+			"vai_tro": user.VaiTro,
+			"avatar":  user.Avatar,
+		},
 	})
 }
