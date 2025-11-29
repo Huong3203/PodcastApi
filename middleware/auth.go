@@ -50,12 +50,13 @@ func AuthMiddleware() gin.HandlerFunc {
 		}
 		token := parts[1]
 
-		// 1️⃣ JWT local
+		// 1️⃣ Thử JWT local trước
 		if claims, err := utils.VerifyToken(token); err == nil {
 			c.Set("user_id", claims.UserID)
 			c.Set("role", claims.Role)
 			c.Set("provider", "local")
 
+			// ✅ Kiểm tra user có bị khoá không
 			var user models.NguoiDung
 			if err := config.DB.First(&user, "id = ?", claims.UserID).Error; err == nil {
 				if !user.KichHoat {
@@ -68,8 +69,9 @@ func AuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		// 2️⃣ Fallback Clerk
-		session, err := ClerkClient.Sessions().Read(token)
+		// 2️⃣ Fallback: Verify Clerk JWT token
+		// ✅ Dùng Verify() thay vì Read() để xử lý JWT token
+		session, err := ClerkClient.Sessions().Verify(token, "")
 		if err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Token không hợp lệ"})
 			c.Abort()
@@ -89,6 +91,7 @@ func AuthMiddleware() gin.HandlerFunc {
 			email = clerkUser.EmailAddresses[0].EmailAddress
 		}
 
+		// ✅ Tìm hoặc tạo user trong DB
 		var user models.NguoiDung
 		err = config.DB.First(&user, "id = ?", clerkID).Error
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -129,6 +132,7 @@ func OptionalAuthMiddleware() gin.HandlerFunc {
 		}
 		token := parts[1]
 
+		// 1️⃣ Thử JWT local
 		if claims, err := utils.VerifyToken(token); err == nil {
 			c.Set("user_id", claims.UserID)
 			c.Set("role", claims.Role)
@@ -137,7 +141,9 @@ func OptionalAuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		session, err := ClerkClient.Sessions().Read(token)
+		// 2️⃣ Thử Clerk JWT token
+		// ✅ Dùng Verify() thay vì Read()
+		session, err := ClerkClient.Sessions().Verify(token, "")
 		if err != nil {
 			c.Next()
 			return

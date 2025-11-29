@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/Huong3203/APIPodcast/config"
 	"github.com/Huong3203/APIPodcast/middleware"
@@ -12,7 +13,7 @@ import (
 
 // 🔹 Struct nhận dữ liệu từ frontend khi login Google qua Clerk
 type ClerkGoogleLoginInput struct {
-	IDToken string `json:"id_token" binding:"required"` // ✅ Nhận token từ Clerk (frontend gửi)
+	IDToken string `json:"id_token" binding:"required"` // JWT token từ Clerk
 	Email   string `json:"email" binding:"required"`
 	HoTen   string `json:"ho_ten"` // Tên người dùng (optional)
 	Avatar  string `json:"avatar"` // Avatar URL (optional)
@@ -28,11 +29,19 @@ func LoginWithClerkGoogle(c *gin.Context) {
 		return
 	}
 
-	// ✅ Verify token từ Clerk bằng Sessions().Read
-	// input.IDToken chính là sessionToken từ Clerk
-	session, err := middleware.ClerkClient.Sessions().Read(input.IDToken)
+	// ✅ Chuẩn hóa token (loại bỏ "Bearer " nếu có)
+	token := strings.TrimSpace(input.IDToken)
+	token = strings.TrimPrefix(token, "Bearer ")
+
+	// ✅ Verify JWT token từ Clerk (thay vì Read session)
+	// Sessions().Verify() dùng để verify JWT token
+	// Tham số thứ 2 là "" (không cần template)
+	session, err := middleware.ClerkClient.Sessions().Verify(token, "")
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Token Clerk không hợp lệ hoặc đã hết hạn"})
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "Token Clerk không hợp lệ hoặc đã hết hạn",
+			"debug": err.Error(), // ✅ Thêm debug info (xoá khi production)
+		})
 		return
 	}
 
@@ -40,7 +49,10 @@ func LoginWithClerkGoogle(c *gin.Context) {
 	clerkUserID := session.UserID
 	clerkUser, err := middleware.ClerkClient.Users().Read(clerkUserID)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Không lấy được thông tin user từ Clerk"})
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "Không lấy được thông tin user từ Clerk",
+			"debug": err.Error(),
+		})
 		return
 	}
 
@@ -67,6 +79,10 @@ func LoginWithClerkGoogle(c *gin.Context) {
 			hoTen += *clerkUser.LastName
 		}
 	}
+	// ✅ Fallback nếu vẫn rỗng
+	if hoTen == "" {
+		hoTen = "User"
+	}
 
 	// ✅ Xử lý avatar (ưu tiên input, fallback Clerk)
 	avatar := input.Avatar
@@ -89,29 +105,39 @@ func LoginWithClerkGoogle(c *gin.Context) {
 			KichHoat: true,    // Tài khoản active
 		}
 		if err := config.DB.Create(&user).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể tạo tài khoản"})
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": "Không thể tạo tài khoản",
+				"debug": err.Error(),
+			})
 			return
 		}
 	} else {
 		// ✅ User đã tồn tại → Cập nhật thông tin
 		user.HoTen = hoTen
 		user.Avatar = avatar
+		user.Provider = "clerk" // ✅ Cập nhật provider
 		if err := config.DB.Save(&user).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể cập nhật thông tin"})
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": "Không thể cập nhật thông tin",
+				"debug": err.Error(),
+			})
 			return
 		}
 	}
 
 	// ✅ Tạo JWT token local để frontend sử dụng
-	token, err := utils.GenerateToken(user.ID, user.VaiTro)
+	localToken, err := utils.GenerateToken(user.ID, user.VaiTro)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể tạo token"})
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Không thể tạo token",
+			"debug": err.Error(),
+		})
 		return
 	}
 
 	// ✅ Trả về token + user info
 	c.JSON(http.StatusOK, gin.H{
-		"token": token,
+		"token": localToken,
 		"user": gin.H{
 			"id":      user.ID,
 			"email":   user.Email,
