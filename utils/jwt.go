@@ -14,9 +14,9 @@ type JWTClaims struct {
 	jwt.RegisteredClaims
 }
 
-// GenerateToken tạo JWT token từ userID và role
+// GenerateToken tạo JWT local
 func GenerateToken(userID string, role string) (string, error) {
-	jwtKey := []byte(os.Getenv("JWT_SECRET")) // Đọc tại thời điểm gọi
+	jwtKey := []byte(os.Getenv("JWT_SECRET"))
 	if len(jwtKey) == 0 {
 		return "", errors.New("JWT_SECRET không được thiết lập")
 	}
@@ -34,9 +34,9 @@ func GenerateToken(userID string, role string) (string, error) {
 	return token.SignedString(jwtKey)
 }
 
-// VerifyToken xác minh và parse JWT token
+// VerifyToken xác minh JWT local
 func VerifyToken(tokenStr string) (*JWTClaims, error) {
-	jwtKey := []byte(os.Getenv("JWT_SECRET")) // Đọc tại thời điểm gọi
+	jwtKey := []byte(os.Getenv("JWT_SECRET"))
 	if len(jwtKey) == 0 {
 		return nil, errors.New("JWT_SECRET không được thiết lập")
 	}

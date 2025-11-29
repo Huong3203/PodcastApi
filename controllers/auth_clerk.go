@@ -10,12 +10,11 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// ✅ Input nhận từ frontend
 type ClerkLoginInput struct {
-	SessionID string `json:"session_id" binding:"required"` // Clerk session ID
-	Email     string `json:"email" binding:"required"`      // Email từ Clerk
-	HoTen     string `json:"ho_ten"`                        // Optional
-	Avatar    string `json:"avatar"`                        // Optional
+	SessionID string `json:"session_id" binding:"required"`
+	Email     string `json:"email" binding:"required"`
+	HoTen     string `json:"ho_ten"`
+	Avatar    string `json:"avatar"`
 }
 
 func LoginWithClerk(c *gin.Context) {
@@ -25,26 +24,23 @@ func LoginWithClerk(c *gin.Context) {
 		return
 	}
 
-	// Verify session với Clerk
 	sess, err := middleware.ClerkClient.Sessions().Read(input.SessionID)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Session không hợp lệ"})
 		return
 	}
 
-	// Lấy user từ Clerk
 	clerkUser, err := middleware.ClerkClient.Users().Read(sess.UserID)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Không lấy được thông tin user"})
 		return
 	}
 
-	email := ""
-	if len(clerkUser.EmailAddresses) > 0 {
+	email := input.Email
+	if email == "" && len(clerkUser.EmailAddresses) > 0 {
 		email = clerkUser.EmailAddresses[0].EmailAddress
 	}
 
-	// Tên
 	hoTen := input.HoTen
 	if hoTen == "" {
 		if clerkUser.FirstName != nil {
@@ -55,16 +51,13 @@ func LoginWithClerk(c *gin.Context) {
 		}
 	}
 
-	// Avatar
 	avatar := input.Avatar
 	if avatar == "" {
 		avatar = clerkUser.ProfileImageURL
 	}
 
-	// Lưu hoặc lấy user trong DB
 	var user models.NguoiDung
-	err = config.DB.Where("email = ?", email).First(&user).Error
-
+	err = config.DB.First(&user, "email = ?", email).Error
 	if err != nil {
 		user = models.NguoiDung{
 			ID:       clerkUser.ID,
@@ -82,7 +75,6 @@ func LoginWithClerk(c *gin.Context) {
 		config.DB.Save(&user)
 	}
 
-	// Tạo JWT local
 	token, err := utils.GenerateToken(user.ID, user.VaiTro)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể tạo token"})
@@ -93,10 +85,4 @@ func LoginWithClerk(c *gin.Context) {
 		"user":  user,
 		"token": token,
 	})
-}
-
-// Helper kiểm tra RecordNotFound
-func IsRecordNotFound(err error) bool {
-	// GORM v2
-	return err != nil && err.Error() == "record not found"
 }

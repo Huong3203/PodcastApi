@@ -29,7 +29,7 @@ func init() {
 	}
 }
 
-// AuthMiddleware xác thực JWT local hoặc token Clerk
+// AuthMiddleware: bắt buộc phải có token (JWT local hoặc Clerk)
 func AuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
@@ -43,33 +43,40 @@ func AuthMiddleware() gin.HandlerFunc {
 		}
 
 		parts := strings.Split(authHeader, " ")
-		if len(parts) != 2 || parts[0] != "Bearer" {
+		if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Token không đúng định dạng"})
 			c.Abort()
 			return
 		}
 		token := parts[1]
 
-		// 1️⃣ Kiểm tra JWT local
+		// 1️⃣ JWT local
 		if claims, err := utils.VerifyToken(token); err == nil {
 			c.Set("user_id", claims.UserID)
-			c.Set("vai_tro", claims.Role)
+			c.Set("role", claims.Role)
 			c.Set("provider", "local")
+
+			var user models.NguoiDung
+			if err := config.DB.First(&user, "id = ?", claims.UserID).Error; err == nil {
+				if !user.KichHoat {
+					c.JSON(http.StatusForbidden, gin.H{"error": "Tài khoản đã bị tạm khóa"})
+					c.Abort()
+					return
+				}
+			}
 			c.Next()
 			return
 		}
 
-		// 2️⃣ Kiểm tra token Clerk
-		sess, err := ClerkClient.Sessions().VerifyToken(token)
+		// 2️⃣ Fallback Clerk
+		session, err := ClerkClient.Sessions().Read(token)
 		if err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Token không hợp lệ"})
 			c.Abort()
 			return
 		}
 
-		clerkID := sess.Subject // Đây mới là userID đúng của Clerk
-
-		// 3️⃣ Lấy thông tin user từ Clerk
+		clerkID := session.UserID
 		clerkUser, err := ClerkClient.Users().Read(clerkID)
 		if err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Không lấy được user từ Clerk"})
@@ -82,32 +89,89 @@ func AuthMiddleware() gin.HandlerFunc {
 			email = clerkUser.EmailAddresses[0].EmailAddress
 		}
 
-		// 4️⃣ Lưu hoặc lấy user trong DB
 		var user models.NguoiDung
-		err = config.DB.Where("id = ?", clerkID).First(&user).Error
+		err = config.DB.First(&user, "id = ?", clerkID).Error
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			// Chưa có user → tạo mới
 			user = models.NguoiDung{
-				ID:       clerkID,
+				ID:       clerkUser.ID,
 				Email:    email,
-				Provider: "clerk",
 				VaiTro:   "user",
+				Provider: "clerk",
 				KichHoat: true,
 			}
 			config.DB.Create(&user)
-		} else if err != nil {
-			// Lỗi DB khác
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi database"})
-			c.Abort()
+		}
+
+		c.Set("user_id", user.ID)
+		c.Set("email", user.Email)
+		c.Set("role", user.VaiTro)
+		c.Set("provider", user.Provider)
+		c.Next()
+	}
+}
+
+// OptionalAuthMiddleware: token không bắt buộc
+func OptionalAuthMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		authHeader := c.GetHeader("Authorization")
+		if authHeader == "" {
+			authHeader = c.GetHeader("X-Auth-Token")
+		}
+		if authHeader == "" {
+			c.Next()
 			return
 		}
 
-		// 5️⃣ Set context
+		parts := strings.Split(authHeader, " ")
+		if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
+			c.Next()
+			return
+		}
+		token := parts[1]
+
+		if claims, err := utils.VerifyToken(token); err == nil {
+			c.Set("user_id", claims.UserID)
+			c.Set("role", claims.Role)
+			c.Set("provider", "local")
+			c.Next()
+			return
+		}
+
+		session, err := ClerkClient.Sessions().Read(token)
+		if err != nil {
+			c.Next()
+			return
+		}
+
+		clerkID := session.UserID
+		clerkUser, err := ClerkClient.Users().Read(clerkID)
+		if err != nil {
+			c.Next()
+			return
+		}
+
+		email := ""
+		if len(clerkUser.EmailAddresses) > 0 {
+			email = clerkUser.EmailAddresses[0].EmailAddress
+		}
+
+		var user models.NguoiDung
+		err = config.DB.First(&user, "id = ?", clerkID).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			user = models.NguoiDung{
+				ID:       clerkUser.ID,
+				Email:    email,
+				VaiTro:   "user",
+				Provider: "clerk",
+				KichHoat: true,
+			}
+			config.DB.Create(&user)
+		}
+
 		c.Set("user_id", user.ID)
 		c.Set("email", user.Email)
-		c.Set("vai_tro", user.VaiTro)
-		c.Set("provider", "clerk")
-
+		c.Set("role", user.VaiTro)
+		c.Set("provider", user.Provider)
 		c.Next()
 	}
 }
