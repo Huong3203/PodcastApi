@@ -21,7 +21,6 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 		auth.POST("/register", controllers.Register)
 		auth.POST("/login", controllers.Login)
 
-		// Login với Google thông qua Clerk
 		auth.POST("/google/clerk", controllers.LoginWithClerk)
 	}
 
@@ -34,6 +33,7 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 		momo.GET("/vip/history/:userId", controllers.GetUserVIPHistory(db))
 		momo.GET("/vip/status/:userId", controllers.CheckUserVIP(db))
 	}
+
 	// ---------------- USER ----------------
 	user := api.Group("/users")
 	{
@@ -60,24 +60,19 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 		admin.GET("/vip-payments", controllers.GetAllVIPPayments(db))
 		admin.GET("/vip-users", controllers.GetVIPUsers(db))
 
-		// Documents
 		admin.POST("/documents/upload", controllers.UploadDocument)
 		admin.GET("/documents", controllers.ListDocumentStatus)
 
-		// Podcasts
 		admin.POST("/podcasts", controllers.CreatePodcastWithUpload)
 		admin.PUT("/podcasts/:id", controllers.UpdatePodcast)
 
-		// Thống kê
 		admin.GET("/stats", controllers.GetAdminStats)
 		admin.GET("/ratings/stats", controllers.GetAdminRatingsStats)
 
-		// Quản lý users
 		admin.GET("/users", controllers.GetAllUsers)
 		admin.PATCH("/users/:id/role", controllers.UpdateUserRole)
 		admin.PATCH("/users/:id/toggle-active", controllers.ToggleUserActivation)
 
-		// Thông báo admin
 		admin.GET("/notifications", controllers.GetAllNotifications)
 		admin.GET("/notifications/filter", controllers.GetNotificationsByAction)
 		admin.PUT("/notifications/:id/read", controllers.MarkNotificationAsRead)
@@ -109,9 +104,7 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 		publicPodcast.GET("/disabled", controllers.GetDisabledPodcasts)
 		publicPodcast.GET("/:id/ratings", controllers.GetPodcastRatings)
 
-		// FEATURED
 		publicPodcast.GET("/featured", controllers.GetFeaturedPodcasts)
-
 		publicPodcast.GET("/:id/recommendations", controllers.GetRecommendedPodcasts)
 	}
 
@@ -128,29 +121,33 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 		protectedPodcast.PUT("/:id", controllers.UpdatePodcast)
 		protectedPodcast.POST("/:id/ratings", controllers.AddPodcastRating)
 
-		// Favorite
 		protectedPodcast.POST("/:id/favorite", controllers.ToggleYeuThichPodcast)
 		protectedPodcast.GET("/favorites/me", controllers.GetMyFavoritePodcasts)
 
-		// Save
 		protectedPodcast.POST("/:id/save", controllers.ToggleLuuPodcast)
 		protectedPodcast.GET("/saved/me", controllers.GetMySavedPodcasts)
 
-		// ---------------- LISTENING HISTORY ----------------
 		protectedPodcast.POST("/:id/history", controllers.LuuLichSuNghe)
 		protectedPodcast.GET("/history/me", controllers.GetMyListeningHistory)
-
 	}
 
 	// ---------------- OTHER ----------------
 	r.GET("/health", controllers.HealthCheck)
 
-	// ---------------- WEBSOCKETS ----------------
+	// ---------------- WebSockets ----------------
 	r.GET("/ws/document/:id", ws.HandleDocumentWebSocket)
 	r.GET("/ws/status", ws.HandleGlobalWebSocket)
+
 	r.GET("/ws/notifications", func(c *gin.Context) {
 		ws.HandleNotificationWS(c.Writer, c.Request)
 	})
 
+	// ⭐ MỚI THÊM — WS badge realtime
+	r.GET("/ws/badge", func(c *gin.Context) {
+		ws.HandleBadgeWS(c.Writer, c.Request)
+	})
+
+	// WebSocket goroutines
 	go ws.HandleNotificationMessages()
+	go ws.HandleBadgeMessages()
 }

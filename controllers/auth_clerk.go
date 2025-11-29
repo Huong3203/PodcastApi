@@ -1,9 +1,7 @@
 package controllers
 
 import (
-	"fmt"
 	"net/http"
-	"time"
 
 	"github.com/Huong3203/APIPodcast/config"
 	"github.com/Huong3203/APIPodcast/middleware"
@@ -21,140 +19,80 @@ type ClerkLoginInput struct {
 }
 
 func LoginWithClerk(c *gin.Context) {
-	fmt.Println("🔵 [LoginWithClerk] Bắt đầu đăng nhập Clerk")
-
 	var input ClerkLoginInput
 	if err := c.ShouldBindJSON(&input); err != nil {
-		fmt.Println("❌ Lỗi bind JSON:", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Thiếu session_id hoặc email"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Thiếu dữ liệu"})
 		return
 	}
 
-	fmt.Printf("📩 Received data: session_id=%s, email=%s\n", input.SessionID, input.Email)
-
-	// 1. ✅ Verify session với Clerk
+	// Verify session với Clerk
 	sess, err := middleware.ClerkClient.Sessions().Read(input.SessionID)
 	if err != nil {
-		fmt.Println("❌ Session không hợp lệ:", err)
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Session không hợp lệ hoặc đã hết hạn"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Session không hợp lệ"})
 		return
 	}
 
-	fmt.Printf("✅ Session verified: UserID=%s\n", sess.UserID)
-
-	// 2. ✅ Lấy thông tin user từ Clerk (để verify)
+	// Lấy user từ Clerk
 	clerkUser, err := middleware.ClerkClient.Users().Read(sess.UserID)
 	if err != nil {
-		fmt.Println("❌ Không lấy được user từ Clerk:", err)
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Không lấy được thông tin user"})
 		return
 	}
 
-	// 3. ✅ Verify email khớp với Clerk
-	clerkEmail := ""
+	email := ""
 	if len(clerkUser.EmailAddresses) > 0 {
-		clerkEmail = clerkUser.EmailAddresses[0].EmailAddress
+		email = clerkUser.EmailAddresses[0].EmailAddress
 	}
 
-	if clerkEmail != input.Email {
-		fmt.Printf("⚠️ Email mismatch: Clerk=%s, Input=%s\n", clerkEmail, input.Email)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Email không khớp với Clerk"})
-		return
-	}
-
-	// 4. ✅ Dùng thông tin từ Clerk (ưu tiên) hoặc từ input
+	// Tên
 	hoTen := input.HoTen
 	if hoTen == "" {
 		if clerkUser.FirstName != nil {
 			hoTen = *clerkUser.FirstName
 		}
 		if clerkUser.LastName != nil {
-			if hoTen != "" {
-				hoTen += " "
-			}
-			hoTen += *clerkUser.LastName
+			hoTen += " " + *clerkUser.LastName
 		}
 	}
 
+	// Avatar
 	avatar := input.Avatar
 	if avatar == "" {
 		avatar = clerkUser.ProfileImageURL
 	}
 
-	// 5. ✅ Kiểm tra user trong DB
+	// Lưu hoặc lấy user trong DB
 	var user models.NguoiDung
-	err = config.DB.Where("email = ?", input.Email).First(&user).Error
+	err = config.DB.Where("email = ?", email).First(&user).Error
 
 	if err != nil {
-		// User chưa tồn tại → tạo mới
-		if IsRecordNotFound(err) {
-			fmt.Println("ℹ️ User chưa tồn tại → tạo mới")
-
-			user = models.NguoiDung{
-				ID:       clerkUser.ID, // Dùng Clerk ID
-				Email:    input.Email,
-				HoTen:    hoTen,
-				Avatar:   avatar,
-				VaiTro:   "user",
-				KichHoat: true,
-				Provider: "clerk",
-				NgayTao:  time.Now(),
-			}
-
-			if err := config.DB.Create(&user).Error; err != nil {
-				fmt.Println("❌ Không thể tạo user:", err)
-				c.JSON(http.StatusInternalServerError, gin.H{
-					"error":  "Không thể tạo user mới",
-					"detail": err.Error(),
-				})
-				return
-			}
-
-			fmt.Println("✅ User mới đã được tạo:", user.ID)
-		} else {
-			// Lỗi DB khác
-			fmt.Println("❌ Lỗi DB:", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi database"})
-			return
+		user = models.NguoiDung{
+			ID:       clerkUser.ID,
+			Email:    email,
+			HoTen:    hoTen,
+			Avatar:   avatar,
+			VaiTro:   "user",
+			Provider: "clerk",
+			KichHoat: true,
 		}
+		config.DB.Create(&user)
 	} else {
-		// User đã tồn tại → update thông tin
-		fmt.Println("ℹ️ User đã tồn tại → cập nhật thông tin")
-
 		user.HoTen = hoTen
 		user.Avatar = avatar
-		user.Provider = "clerk"
-
-		if err := config.DB.Save(&user).Error; err != nil {
-			fmt.Println("❌ Không thể cập nhật user:", err)
-		} else {
-			fmt.Println("✅ User đã được cập nhật")
-		}
+		config.DB.Save(&user)
 	}
 
-	// 6. ✅ Tạo JWT token của hệ thống
+	// Tạo JWT local
 	token, err := utils.GenerateToken(user.ID, user.VaiTro)
 	if err != nil {
-		fmt.Println("❌ Không thể tạo JWT token:", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể tạo token"})
 		return
 	}
 
-	fmt.Println("✅ JWT token đã được tạo:", token[:20]+"...")
-
-	// 7. ✅ Trả về response
 	c.JSON(http.StatusOK, gin.H{
-		"user": gin.H{
-			"id":      user.ID,
-			"email":   user.Email,
-			"ho_ten":  user.HoTen,
-			"avatar":  user.Avatar,
-			"vai_tro": user.VaiTro,
-		},
+		"user":  user,
 		"token": token,
 	})
-
-	fmt.Println("✅ [LoginWithClerk] Hoàn tất")
 }
 
 // Helper kiểm tra RecordNotFound

@@ -50,6 +50,7 @@ func ConnectDB() {
 		&models.PodcastYeuThich{},
 		&models.PodcastLuu{},
 		&models.LichSuNghe{},
+		&models.Notification{},
 	)
 	if err != nil {
 		log.Fatalf("❌ Auto migration thất bại: %v", err)
