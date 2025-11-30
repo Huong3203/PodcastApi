@@ -20,19 +20,28 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 	{
 		auth.POST("/register", controllers.Register)
 		auth.POST("/login", controllers.Login)
-
-		// Route cho Google login qua Clerk
 		auth.POST("/google/clerk", controllers.ClerkLogin)
 	}
 
 	// ---------------- MOMO VIP ----------------
 	momo := api.Group("/momo")
 	{
+		// Public routes - FE và MoMo có thể gọi
 		momo.POST("/vip/create", controllers.CreateMomoVIPPayment(db))
-		momo.POST("/vip/ipn", controllers.MomoVIPIPN(db))
-		momo.GET("/vip/return", controllers.MomoVIPReturn(db))
-		momo.GET("/vip/history/:userId", controllers.GetUserVIPHistory(db))
-		momo.GET("/vip/status/:userId", controllers.CheckUserVIP(db))
+		momo.POST("/vip/ipn", controllers.MomoVIPIPN(db))      // Webhook từ MoMo
+		momo.GET("/vip/return", controllers.MomoVIPReturn(db)) // Redirect từ MoMo
+
+		// Check payment status - FE dùng để verify thanh toán
+		momo.GET("/payment/status/:orderId", controllers.CheckPaymentStatus(db))
+		momo.POST("/payment/verify/:orderId", controllers.VerifyPaymentAndSetVIP(db))
+
+		// Protected routes - Cần đăng nhập
+		momoProtected := momo.Group("/vip")
+		momoProtected.Use(middleware.AuthMiddleware())
+		{
+			momoProtected.GET("/history/:userId", controllers.GetUserVIPHistory(db))
+			momoProtected.GET("/status/:userId", controllers.CheckUserVIP(db))
+		}
 	}
 
 	// ---------------- USER ----------------
@@ -58,6 +67,7 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 	{
 		admin.Use(middleware.AuthMiddleware(), middleware.DBMiddleware(db))
 
+		// Admin VIP management
 		admin.GET("/vip-payments", controllers.GetAllVIPPayments(db))
 		admin.GET("/vip-users", controllers.GetVIPUsers(db))
 
@@ -143,7 +153,6 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 		ws.HandleNotificationWS(c.Writer, c.Request)
 	})
 
-	// ⭐ MỚI THÊM — WS badge realtime
 	r.GET("/ws/badge", func(c *gin.Context) {
 		ws.HandleBadgeWS(c.Writer, c.Request)
 	})
