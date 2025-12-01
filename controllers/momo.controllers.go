@@ -408,7 +408,7 @@ func VerifyPaymentAndSetVIP(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-// NEW: ForceCompletePayment - Manual complete payment (FOR TESTING ONLY)
+// ✅ NEW: ForceCompletePayment - Manual complete payment (FOR TESTING ONLY)
 func ForceCompletePayment(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		orderID := c.Param("orderId")
