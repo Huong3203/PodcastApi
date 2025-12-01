@@ -13,6 +13,7 @@ type Payment struct {
 	PodcastID    *string   `gorm:"type:char(36);default:NULL" json:"podcast_id"`
 	CreatedAt    time.Time `gorm:"autoCreateTime"           json:"created_at"`
 	UpdatedAt    time.Time `gorm:"autoUpdateTime"           json:"updated_at"`
+	ExpiresAt    time.Time `json:"expires_at"`
 	IsRecurring  bool      `gorm:"default:false" json:"is_recurring"` // payment được tạo cho gói tự động gia hạn
 	PeriodMonths int       `gorm:"default:1" json:"period_months"`    // gói gia hạn (1 = 1 tháng, 12 = 1 năm)
 }
