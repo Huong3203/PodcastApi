@@ -35,6 +35,9 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 		momo.GET("/payment/status/:orderId", controllers.CheckPaymentStatus(db))
 		momo.POST("/payment/verify/:orderId", controllers.VerifyPaymentAndSetVIP(db))
 
+		// ✅ NEW: Force complete payment (FOR TESTING/DEBUG ONLY)
+		momo.POST("/payment/force-complete/:orderId", controllers.ForceCompletePayment(db))
+
 		// Protected routes - Cần đăng nhập
 		momoProtected := momo.Group("/vip")
 		momoProtected.Use(middleware.AuthMiddleware())
