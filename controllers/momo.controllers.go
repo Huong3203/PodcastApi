@@ -259,7 +259,8 @@ func MomoVIPReturn(db *gorm.DB) gin.HandlerFunc {
 		var payment models.Payment
 		if err := db.First(&payment, "order_id = ?", orderId).Error; err != nil {
 			log.Println("Payment not found in RETURN for orderId:", orderId)
-			redirect := fmt.Sprintf("%s?orderId=%s&status=not_found", services.AppClientRedirectURL, orderId)
+			// Redirect về deep link với status not_found
+			redirect := fmt.Sprintf("sonifyapp://payment-result?orderId=%s&resultCode=%s&status=not_found", orderId, resultCodeStr)
 			c.Redirect(http.StatusFound, redirect)
 			return
 		}
@@ -276,7 +277,8 @@ func MomoVIPReturn(db *gorm.DB) gin.HandlerFunc {
 				log.Println("set user vip err:", err)
 			}
 
-			redirect := fmt.Sprintf("%s?orderId=%s&status=success", services.AppClientRedirectURL, orderId)
+			// Redirect về deep link với orderId và resultCode
+			redirect := fmt.Sprintf("sonifyapp://payment-result?orderId=%s&resultCode=%s", orderId, resultCodeStr)
 			c.Redirect(http.StatusFound, redirect)
 			return
 		}
@@ -284,7 +286,8 @@ func MomoVIPReturn(db *gorm.DB) gin.HandlerFunc {
 		// THẤT BẠI
 		payment.Status = "failed"
 		_ = db.Save(&payment)
-		redirect := fmt.Sprintf("%s?orderId=%s&status=failed&message=%s", services.AppClientRedirectURL, orderId, message)
+		// Redirect về deep link với status failed
+		redirect := fmt.Sprintf("sonifyapp://payment-result?orderId=%s&resultCode=%s&message=%s", orderId, resultCodeStr, message)
 		c.Redirect(http.StatusFound, redirect)
 	}
 }
