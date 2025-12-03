@@ -14,7 +14,7 @@ type NguoiDung struct {
 	NgayTao    time.Time  `gorm:"autoCreateTime" json:"ngay_tao"`
 	KichHoat   bool       `gorm:"default:true" json:"kich_hoat"`
 	Provider   string     `gorm:"type:enum('local', 'clerk');default:'local'" json:"provider"`
-	VIP        bool       `gorm:"default:false" json:"vip"`
-	VIPExpires *time.Time `gorm:"type:timestamp;default:NULL" json:"vip_expires_at"` // hạn VIP
-	AutoRenew  bool       `gorm:"default:false" json:"auto_renew"`                   // có tự động gia hạn không
+	VIP        bool       `gorm:"column:vip;default:false" json:"vip"`
+	VIPExpires *time.Time `gorm:"column:vip_expires;type:timestamp;default:NULL" json:"vip_expires"`
+	AutoRenew  bool       `gorm:"column:auto_renew;default:false" json:"auto_renew"`
 }
