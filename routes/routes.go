@@ -25,26 +25,43 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 
 	// ---------------- MOMO VIP ----------------
 	// ---------------- MOMO VIP ----------------
-	momo := api.Group("/momo")
+	// momo := api.Group("/momo")
+	// {
+	// 	// Public routes - FE và MoMo gọi
+	// 	momo.POST("/vip/create", controllers.CreateMomoVIPPayment(db))
+	// 	momo.POST("/vip/ipn", controllers.MomoIPN(db))       // ĐÃ SỬA: MomoVIPIPN → MomoIPN
+	// 	momo.GET("/vip/return", controllers.MomoReturnURL()) // ĐÃ SỬA: MomoVIPReturn → MomoReturnURL
+
+	// 	// Check payment status
+	// 	//momo.GET("/payment/status/:orderId", controllers.CheckPaymentStatus(db))
+	// 	//momo.POST("/payment/verify/:orderId", controllers.VerifyPaymentAndSetVIP(db))
+
+	// 	// Force complete (debug)
+	// 	//momo.POST("/payment/force-complete/:orderId", controllers.ForceCompletePayment(db))
+
+	// 	// Protected routes
+	// 	momoProtected := momo.Group("/vip")
+	// 	momoProtected.Use(middleware.AuthMiddleware())
+	// 	{
+	// 		momoProtected.GET("/history/:userId", controllers.GetUserVIPHistory(db))
+	// 		momoProtected.GET("/status/:userId", controllers.CheckUserVIP(db))
+	// 	}
+	// }
+
+	// ---------------- PAYMENT (MoMo VIP) ----------------
+	payment := api.Group("/payment")
 	{
-		// Public routes - FE và MoMo gọi
-		momo.POST("/vip/create", controllers.CreateMomoVIPPayment(db))
-		momo.POST("/vip/ipn", controllers.MomoIPN(db))       // ĐÃ SỬA: MomoVIPIPN → MomoIPN
-		momo.GET("/vip/return", controllers.MomoReturnURL()) // ĐÃ SỬA: MomoVIPReturn → MomoReturnURL
+		// Public routes - không cần auth
+		payment.GET("/packages", controllers.GetVIPPackages)    // Danh sách gói VIP
+		payment.GET("/momo/callback", controllers.MoMoCallback) // Redirect từ MoMo
+		payment.POST("/momo/ipn", controllers.MoMoIPN)          // Webhook từ MoMo
 
-		// Check payment status
-		//momo.GET("/payment/status/:orderId", controllers.CheckPaymentStatus(db))
-		//momo.POST("/payment/verify/:orderId", controllers.VerifyPaymentAndSetVIP(db))
-
-		// Force complete (debug)
-		//momo.POST("/payment/force-complete/:orderId", controllers.ForceCompletePayment(db))
-
-		// Protected routes
-		momoProtected := momo.Group("/vip")
-		momoProtected.Use(middleware.AuthMiddleware())
+		// Protected routes - cần đăng nhập
+		paymentProtected := payment.Group("/")
+		paymentProtected.Use(middleware.AuthMiddleware())
 		{
-			momoProtected.GET("/history/:userId", controllers.GetUserVIPHistory(db))
-			momoProtected.GET("/status/:userId", controllers.CheckUserVIP(db))
+			paymentProtected.POST("/momo/create", controllers.CreateMoMoPayment) // Tạo thanh toán
+			paymentProtected.GET("/history", controllers.GetPaymentHistory)      // Lịch sử thanh toán
 		}
 	}
 
