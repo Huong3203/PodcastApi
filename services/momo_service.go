@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/Huong3203/APIPodcast/config"
@@ -139,6 +140,18 @@ func CreateMoMoPayment(userID string, amount int64, vipDuration int, orderInfo s
 		return nil, nil, fmt.Errorf("không thể parse response: %w", err)
 	}
 
+	// Nếu đang chạy sandbox thì chuyển đổi scheme deeplink/qrCode momo:// -> momotest://
+	// Vì MoMo sandbox thường trả "momo://" nhưng sandbox app trên thiết bị sử dụng "momotest://"
+	if cfg.IsSandbox {
+		if strings.HasPrefix(momoResp.Deeplink, "momo://") {
+			momoResp.Deeplink = strings.Replace(momoResp.Deeplink, "momo://", "momotest://", 1)
+		}
+		if strings.HasPrefix(momoResp.QRCodeURL, "momo://") {
+			momoResp.QRCodeURL = strings.Replace(momoResp.QRCodeURL, "momo://", "momotest://", 1)
+		}
+		// Thêm chú ý: payUrl vẫn để test-payment... (không đổi)
+	}
+
 	paymentInfo, _ := json.Marshal(momoResp)
 	config.DB.Model(payment).Updates(map[string]interface{}{
 		"payment_info": string(paymentInfo),
@@ -229,7 +242,7 @@ func ProcessMoMoIPN(ipnReq *MoMoIPNRequest) error {
 	return nil
 }
 
-// ✅ HÀM MỚI: Check status từ query params (cho MoMo UAT)
+// Check status từ DB theo orderID (có thể dùng cho app gọi lại)
 func CheckPaymentStatusByOrderID(orderID string) (*models.Payment, error) {
 	var payment models.Payment
 	if err := config.DB.Where("order_id = ?", orderID).First(&payment).Error; err != nil {
