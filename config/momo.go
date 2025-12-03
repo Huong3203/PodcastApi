@@ -17,8 +17,8 @@ func GetMoMoConfig() MoMoConfig {
 		AccessKey:      getEnvOrDefault("MOMO_ACCESS_KEY", "F8BBA842ECF85"),
 		SecretKey:      getEnvOrDefault("MOMO_SECRET_KEY", "K951B6PE1waDMi640xX08PD3vg6EkVlz"),
 		CreateEndpoint: getEnvOrDefault("MOMO_CREATE_ENDPOINT", "https://test-payment.momo.vn/v2/gateway/api/create"),
-		RedirectURL:    getEnvOrDefault("MOMO_REDIRECT_URL", "http://localhost:8080/payment/momo/callback"),
-		IPNUrl:         getEnvOrDefault("MOMO_IPN_URL", "http://localhost:8080/payment/momo/ipn"),
+		RedirectURL:    getEnvOrDefault("MOMO_REDIRECT_URL", "sonifyapp://payment-result"),
+		IPNUrl:         getEnvOrDefault("MOMO_IPN_URL", "https://podcastapi.onrender.com/api/payment/momo/ipn"),
 	}
 }
 

@@ -9,17 +9,13 @@ type Payment struct {
 	RequestID   string    `gorm:"type:varchar(100);uniqueIndex;not null" json:"request_id"`
 	Amount      int64     `gorm:"not null" json:"amount"`
 	Status      string    `gorm:"type:enum('PENDING','SUCCESS','FAILED','CANCELLED');default:'PENDING'" json:"status"`
-	PaymentType string    `gorm:"type:varchar(50);default:'VIP_UPGRADE'" json:"payment_type"` // VIP_UPGRADE, VIP_RENEW
-	VIPDuration int       `gorm:"default:30" json:"vip_duration"`                             // số ngày VIP (30, 90, 365)
-	PaymentInfo string    `gorm:"type:text" json:"payment_info"`                              // lưu response từ MoMo
+	PaymentType string    `gorm:"type:varchar(50);default:'VIP_UPGRADE'" json:"payment_type"`
+	VIPDuration int       `gorm:"default:30" json:"vip_duration"`
+	PaymentInfo string    `gorm:"type:text" json:"payment_info"`
 	CreatedAt   time.Time `gorm:"autoCreateTime" json:"created_at"`
 	UpdatedAt   time.Time `gorm:"autoUpdateTime" json:"updated_at"`
 }
 
-// package models
-
-// import (
-// 	"time"
 // )
 
 // type Payment struct {

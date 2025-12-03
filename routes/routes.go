@@ -55,6 +55,7 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 		payment.GET("/packages", controllers.GetVIPPackages)    // Danh sách gói VIP
 		payment.GET("/momo/callback", controllers.MoMoCallback) // Redirect từ MoMo
 		payment.POST("/momo/ipn", controllers.MoMoIPN)          // Webhook từ MoMo
+		payment.GET("/status", controllers.CheckPaymentStatus)
 
 		// Protected routes - cần đăng nhập
 		paymentProtected := payment.Group("/")
