@@ -70,26 +70,17 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 	// 	userFavorites.GET("", controllers.GetFavorites)                    // Danh sách
 	// }
 
-	// // ============ USER NOTIFICATIONS ============
-	// userNotifications := api.Group("/user/notifications")
-	// userNotifications.Use(middleware.AuthMiddleware(), middleware.DBMiddleware(db))
-	// {
-	// 	userNotifications.GET("", controllers.GetNotifications)                // Danh sách
-	// 	userNotifications.GET("/unread-count", controllers.GetUnreadCount)     // Đếm chưa đọc
-	// 	userNotifications.PUT("/:id/read", controllers.MarkNotificationAsRead) // Đánh dấu đã đọc
-	// 	userNotifications.PUT("/read-all", controllers.MarkAllAsRead)          // Đánh dấu tất cả
-	// 	userNotifications.DELETE("/:id", controllers.DeleteNotification)       // Xóa 1 cái
-	// 	userNotifications.DELETE("", controllers.DeleteAllNotifications)       // Xóa tất cả
-	// 	userNotifications.DELETE("/read", controllers.DeleteReadNotifications) // Xóa đã đọc
-	// }
-
-	// ---------------- USER NOTIFICATIONS ----------------
-	userNotifications := api.Group("/notifications")
-	userNotifications.Use(middleware.AuthMiddleware())
+	// ============ USER NOTIFICATIONS ============
+	userNotifications := api.Group("/user/notifications")
+	userNotifications.Use(middleware.AuthMiddleware(), middleware.DBMiddleware(db))
 	{
-		userNotifications.GET("/me", controllers.GetMyNotifications)
-		userNotifications.PUT("/:id/read", controllers.MarkMyNotificationAsRead)
-		userNotifications.PUT("/read-all", controllers.MarkAllMyNotificationsAsRead)
+		userNotifications.GET("", controllers.GetNotifications)                // Danh sách
+		userNotifications.GET("/unread-count", controllers.GetUnreadCount)     // Đếm chưa đọc
+		userNotifications.PUT("/:id/read", controllers.MarkNotificationAsRead) // Đánh dấu đã đọc
+		userNotifications.PUT("/read-all", controllers.MarkAllAsRead)          // Đánh dấu tất cả
+		userNotifications.DELETE("/:id", controllers.DeleteNotification)       // Xóa 1 cái
+		userNotifications.DELETE("", controllers.DeleteAllNotifications)       // Xóa tất cả
+		userNotifications.DELETE("/read", controllers.DeleteReadNotifications) // Xóa đã đọc
 	}
 
 	// ---------------- ADMIN ----------------
