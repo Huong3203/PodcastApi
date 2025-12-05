@@ -144,6 +144,44 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 		publicPodcast.GET("/:id/recommendations", controllers.GetRecommendedPodcasts)
 	}
 
+	// LISTENING HISTORY GROUP
+	listening := user.Group("/listening-history")
+	{
+		// Lưu / cập nhật lịch sử nghe
+		listening.POST("/:podcast_id", controllers.SavePodcastHistory)
+
+		// Lấy tất cả lịch sử nghe
+		listening.GET("", controllers.GetListeningHistory)
+
+		// Lấy lịch sử của 1 podcast
+		listening.GET("/:podcast_id", controllers.GetPodcastHistory)
+
+		// Xóa 1 lịch sử podcast
+		listening.DELETE("/:podcast_id", controllers.DeletePodcastHistory)
+
+		// Xóa toàn bộ lịch sử nghe
+		listening.DELETE("", controllers.ClearAllHistory)
+	}
+
+	// FAVORITE GROUP
+	favorites := user.Group("/favorites")
+	{
+		// Toggle yêu thích podcast
+		favorites.POST("/:id/toggle", controllers.ToggleYeuThichPodcast)
+
+		// Lấy danh sách yêu thích
+		favorites.GET("", controllers.GetMyFavoritePodcasts)
+	}
+
+	// SAVED PODCAST GROUP
+	saved := user.Group("/saved")
+	{
+		// Toggle lưu podcast
+		saved.POST("/:id/toggle", controllers.ToggleLuuPodcast)
+		// Lấy danh sách đã lưu
+		saved.GET("", controllers.GetMySavedPodcasts)
+	}
+
 	featuredRatings := api.Group("/ratings")
 	{
 		featuredRatings.GET("/featured", controllers.GetFeaturedReviews)
