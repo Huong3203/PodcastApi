@@ -8,6 +8,6 @@ type PodcastYeuThich struct {
 	PodcastID   string    `gorm:"type:char(36);not null" json:"podcast_id"`
 	NgayThich   time.Time `gorm:"autoCreateTime" json:"ngay_thich"`
 
-	NguoiDung NguoiDung `gorm:"foreignKey:NguoiDungID" json:"nguoi_dung,omitempty"`
-	Podcast   Podcast   `gorm:"foreignKey:PodcastID" json:"podcast,omitempty"`
+	Podcast   Podcast   `gorm:"foreignKey:PodcastID"`
+	NguoiDung NguoiDung `gorm:"foreignKey:NguoiDungID"`
 }

@@ -59,15 +59,15 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 		userHistory.DELETE("", controllers.ClearAllHistory)                  // Xóa tất cả
 	}
 
-	// ============ USER FAVORITES ============
-	// userFavorites := api.Group("/user/favorites")
-	// userFavorites.Use(middleware.AuthMiddleware(), middleware.DBMiddleware(db))
-	// {
-	// 	userFavorites.POST("/:podcast_id", controllers.AddFavorite)        // Thêm yêu thích
-	// 	userFavorites.DELETE("/:podcast_id", controllers.RemoveFavorite)   // Bỏ yêu thích
-	// 	userFavorites.GET("/:podcast_id/check", controllers.CheckFavorite) // Kiểm tra
-	// 	userFavorites.GET("", controllers.GetFavorites)                    // Danh sách
-	// }
+	//============ USER FAVORITES ============
+	userFavorites := api.Group("/user/favorites")
+	userFavorites.Use(middleware.AuthMiddleware(), middleware.DBMiddleware(db))
+	{
+		userFavorites.POST("/:podcast_id", controllers.AddFavorite)        // Thêm yêu thích
+		userFavorites.DELETE("/:podcast_id", controllers.RemoveFavorite)   // Bỏ yêu thích
+		userFavorites.GET("/:podcast_id/check", controllers.CheckFavorite) // Kiểm tra
+		userFavorites.GET("", controllers.GetFavorites)                    // Danh sách
+	}
 
 	// ============ USER NOTIFICATIONS ============
 	userNotifications := api.Group("/user/notifications")
@@ -163,15 +163,15 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 		listening.DELETE("", controllers.ClearAllHistory)
 	}
 
-	// FAVORITE GROUP
-	favorites := user.Group("/favorites")
-	{
-		// Toggle yêu thích podcast
-		favorites.POST("/:id/toggle", controllers.ToggleYeuThichPodcast)
+	// // FAVORITE GROUP
+	// favorites := user.Group("/favorites")
+	// {
+	// 	// Toggle yêu thích podcast
+	// 	favorites.POST("/:id/toggle", controllers.ToggleYeuThichPodcast)
 
-		// Lấy danh sách yêu thích
-		favorites.GET("", controllers.GetMyFavoritePodcasts)
-	}
+	// 	// Lấy danh sách yêu thích
+	// 	favorites.GET("", controllers.GetMyFavoritePodcasts)
+	// }
 
 	// SAVED PODCAST GROUP
 	saved := user.Group("/saved")
