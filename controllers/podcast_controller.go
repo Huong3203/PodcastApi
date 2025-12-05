@@ -293,7 +293,7 @@ func CreatePodcastWithUpload(c *gin.Context) {
 	})
 }
 
-// Cập nhật podcast (Admin)
+// Cập nhật podcast
 func UpdatePodcast(c *gin.Context) {
 	role, _ := c.Get("vai_tro")
 	if role != "admin" {
