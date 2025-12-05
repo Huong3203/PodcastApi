@@ -109,7 +109,6 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// Struct input đăng ký có thể nhập vai trò
 type RegisterInput struct {
 	Email   string `json:"email" binding:"required,email"`
 	MatKhau string `json:"mat_khau" binding:"required,min=6"`
@@ -117,7 +116,7 @@ type RegisterInput struct {
 	VaiTro  string `json:"vai_tro"` // "user" hoặc "admin"
 }
 
-// Register: đăng ký tài khoản user hoặc admin
+// Register user hoặc admin
 func Register(c *gin.Context) {
 	var input RegisterInput
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -125,7 +124,7 @@ func Register(c *gin.Context) {
 		return
 	}
 
-	// Kiểm tra email + provider = local
+	// Kiểm tra email
 	var existing models.NguoiDung
 	if err := config.DB.Where("email = ? AND provider = ?", input.Email, "local").First(&existing).Error; err == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Email đã được sử dụng"})
@@ -138,7 +137,7 @@ func Register(c *gin.Context) {
 		return
 	}
 
-	// Mặc định nếu không truyền vai trò là "user"
+	// Mặc định vai trò user
 	role := "user"
 	if input.VaiTro == "admin" {
 		role = "admin"
@@ -169,13 +168,11 @@ func Register(c *gin.Context) {
 	})
 }
 
-// Struct input login
 type LoginInput struct {
 	Email   string `json:"email" binding:"required,email"`
 	MatKhau string `json:"mat_khau" binding:"required"`
 }
 
-// Login: đăng nhập local
 func Login(c *gin.Context) {
 	var input LoginInput
 	if err := c.ShouldBindJSON(&input); err != nil {
