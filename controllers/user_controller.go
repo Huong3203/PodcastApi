@@ -40,7 +40,7 @@ func GetProfile(c *gin.Context) {
 type UpdateProfileInput struct {
 	HoTen  string                `form:"ho_ten" binding:"required"`
 	Email  string                `form:"email" binding:"required,email"`
-	Avatar *multipart.FileHeader `form:"avatar"` // avatar có thể upload
+	Avatar *multipart.FileHeader `form:"avatar"`
 }
 
 func UpdateProfile(c *gin.Context) {
@@ -62,21 +62,22 @@ func UpdateProfile(c *gin.Context) {
 		return
 	}
 
-	// Kiểm tra email đã được dùng chưa (chỉ local mới đổi email)
 	updateData := map[string]interface{}{
 		"ho_ten": input.HoTen,
 	}
 
+	// Nếu provider là local thì được đổi email
 	if user.Provider == "local" {
 		var existingUser models.NguoiDung
-		if err := config.DB.Where("email = ? AND id != ?", input.Email, userID).First(&existingUser).Error; err == nil {
+		if err := config.DB.Where("email = ? AND id != ?", input.Email, userID).
+			First(&existingUser).Error; err == nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Email đã được sử dụng"})
 			return
 		}
 		updateData["email"] = input.Email
 	}
 
-	// Upload avatar nếu có
+	// Upload avatar
 	if input.Avatar != nil {
 		avatarURL, err := utils.UploadAvatarToSupabase(input.Avatar, fmt.Sprintf("avatar_%s", userID))
 		if err != nil {
@@ -86,21 +87,15 @@ func UpdateProfile(c *gin.Context) {
 		updateData["avatar"] = avatarURL
 	}
 
-	// Cập nhật DB
 	tx := config.DB.Model(&models.NguoiDung{}).Where("id = ?", userID).Updates(updateData)
-	if tx.RowsAffected == 0 {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy người dùng"})
-		return
-	}
 	if tx.Error != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Cập nhật thất bại"})
 		return
 	}
 
+	// 🔔 Thêm thông báo
 	message := fmt.Sprintf("Người dùng %s đã cập nhật hồ sơ cá nhân", input.HoTen)
-	if err := services.CreateNotification(userID, "", "update_profile", message); err != nil {
-		fmt.Println("❌ Lỗi khi tạo thông báo:", err)
-	}
+	services.CreateNotification(userID, "", "update_profile", message)
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Cập nhật thành công",
@@ -136,26 +131,19 @@ func ChangePassword(c *gin.Context) {
 		return
 	}
 
+	// Check mật khẩu cũ
 	if err := bcrypt.CompareHashAndPassword([]byte(user.MatKhau), []byte(input.MatKhauCu)); err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Mật khẩu cũ không đúng"})
 		return
 	}
 
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(input.MatKhauMoi), bcrypt.DefaultCost)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể mã hoá mật khẩu"})
-		return
-	}
+	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte(input.MatKhauMoi), bcrypt.DefaultCost)
 
-	if err := config.DB.Model(&user).Update("mat_khau", string(hashedPassword)).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Đổi mật khẩu thất bại"})
-		return
-	}
+	config.DB.Model(&user).Update("mat_khau", string(hashedPassword))
 
+	// 🔔 Thông báo đổi mật khẩu
 	message := fmt.Sprintf("Người dùng %s đã đổi mật khẩu", user.HoTen)
-	if err := services.CreateNotification(userID, "", "change_password", message); err != nil {
-		fmt.Println(" Lỗi khi tạo thông báo:", err)
-	}
+	services.CreateNotification(userID, "", "change_password", message)
 
 	c.JSON(http.StatusOK, gin.H{"message": "Đổi mật khẩu thành công"})
 }
@@ -194,24 +182,22 @@ func UpdateUserRole(c *gin.Context) {
 	var input struct {
 		VaiTro string `json:"vai_tro"`
 	}
+
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Dữ liệu không hợp lệ"})
 		return
 	}
+
 	if input.VaiTro != "admin" && input.VaiTro != "user" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Vai trò không hợp lệ"})
 		return
 	}
 
-	if err := config.DB.Model(&models.NguoiDung{}).Where("id = ?", id).Update("vai_tro", input.VaiTro).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể cập nhật vai trò"})
-		return
-	}
+	config.DB.Model(&models.NguoiDung{}).Where("id = ?", id).Update("vai_tro", input.VaiTro)
 
-	message := fmt.Sprintf("Người dùng %s đã được đổi vai trò thành %s", id, input.VaiTro)
-	if err := services.CreateNotification(id, "", "update_role", message); err != nil {
-		fmt.Println(" Lỗi khi tạo thông báo:", err)
-	}
+	// 🔔 Thông báo khi admin đổi vai trò
+	message := fmt.Sprintf("Tài khoản %s đã được đổi vai trò thành %s", id, input.VaiTro)
+	services.CreateNotification(id, "", "update_role", message)
 
 	c.JSON(http.StatusOK, gin.H{"message": "Cập nhật vai trò thành công"})
 }
@@ -231,19 +217,19 @@ func ToggleUserActivation(c *gin.Context) {
 	}
 
 	newStatus := !user.KichHoat
-	if err := config.DB.Model(&user).Update("kich_hoat", newStatus).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể cập nhật trạng thái"})
-		return
-	}
+	config.DB.Model(&user).Update("kich_hoat", newStatus)
 
-	statusText := "kích hoạt"
+	statusText := "đã được kích hoạt"
 	if !newStatus {
-		statusText = "tắt kích hoạt"
-	}
-	message := fmt.Sprintf("Người dùng %s đã %s", user.HoTen, statusText)
-	if err := services.CreateNotification(id, "", "toggle_activation", message); err != nil {
-		fmt.Println("Lỗi khi tạo thông báo:", err)
+		statusText = "đã bị vô hiệu hoá"
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Cập nhật trạng thái thành công", "kich_hoat": newStatus})
+	// 🔔 Thông báo bật / tắt tài khoản
+	message := fmt.Sprintf("Tài khoản %s %s", user.HoTen, statusText)
+	services.CreateNotification(id, "", "toggle_activation", message)
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":   "Cập nhật trạng thái thành công",
+		"kich_hoat": newStatus,
+	})
 }

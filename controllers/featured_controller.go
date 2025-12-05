@@ -5,6 +5,7 @@ import (
 
 	"github.com/Huong3203/APIPodcast/config"
 	"github.com/Huong3203/APIPodcast/models"
+	"github.com/Huong3203/APIPodcast/services"
 	"github.com/gin-gonic/gin"
 )
 
@@ -26,6 +27,14 @@ func GetFeaturedPodcasts(c *gin.Context) {
 		podcasts[i].TomTat = podcasts[i].TaiLieu.TomTat
 	}
 
+	// 🔔 Tạo thông báo cho admin khi gọi API
+	services.CreateNotification(
+		"", // user_id rỗng vì chỉ là admin xem
+		"", // podcast_id rỗng
+		"view_featured",
+		"Admin đã xem danh sách podcast nổi bật",
+	)
+
 	c.JSON(http.StatusOK, gin.H{"data": podcasts})
 }
 
@@ -41,6 +50,14 @@ func GetFeaturedReviews(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể lấy đánh giá nổi bật"})
 		return
 	}
+
+	// 🔔 Tạo thông báo cho admin khi xem đánh giá
+	services.CreateNotification(
+		"",
+		"",
+		"view_featured_reviews",
+		"Admin đã xem danh sách đánh giá nổi bật",
+	)
 
 	c.JSON(http.StatusOK, gin.H{"data": danhgias})
 }

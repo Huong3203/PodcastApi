@@ -48,8 +48,16 @@ func AddPodcastRating(c *gin.Context) {
 	// 🔹 Tạo thông báo cho chủ podcast
 	message := fmt.Sprintf("Người dùng đã đánh giá %d sao cho podcast %s", sao, podcastID)
 	if err := services.CreateNotification(userID, podcastID, "add_rating", message); err != nil {
-		fmt.Println("❌ Lỗi khi tạo thông báo:", err)
+		fmt.Println("Lỗi khi tạo thông báo:", err)
 	}
+
+	// 🔹 Tạo thông báo khi có đánh giá mới cho podcast (theo yêu cầu)
+	_ = services.CreateNotification(
+		userID,
+		podcastID,
+		"new_podcast_rating",
+		fmt.Sprintf("Podcast %s vừa nhận đánh giá %d sao", podcastID, sao),
+	)
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Đánh giá thành công",
@@ -58,7 +66,6 @@ func AddPodcastRating(c *gin.Context) {
 }
 
 // 🔹 Lấy tất cả đánh giá của podcast
-
 func GetPodcastRatings(c *gin.Context) {
 	db := config.DB
 	podcastID := c.Param("id")
@@ -70,7 +77,7 @@ func GetPodcastRatings(c *gin.Context) {
 		return
 	}
 
-	// ✅ Dùng sql.NullFloat64 để tránh lỗi NULL
+	// Dùng sql.NullFloat64 để tránh lỗi NULL
 	var avg sql.NullFloat64
 	if err := db.Model(&models.DanhGia{}).
 		Where("podcast_id = ?", podcastID).

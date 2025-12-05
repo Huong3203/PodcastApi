@@ -1,3 +1,4 @@
+// routes/routes.go
 package routes
 
 import (
@@ -23,46 +24,19 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 		auth.POST("/google/clerk", controllers.ClerkLogin)
 	}
 
-	// ---------------- MOMO VIP ----------------
-	// ---------------- MOMO VIP ----------------
-	// momo := api.Group("/momo")
-	// {
-	// 	// Public routes - FE và MoMo gọi
-	// 	momo.POST("/vip/create", controllers.CreateMomoVIPPayment(db))
-	// 	momo.POST("/vip/ipn", controllers.MomoIPN(db))       // ĐÃ SỬA: MomoVIPIPN → MomoIPN
-	// 	momo.GET("/vip/return", controllers.MomoReturnURL()) // ĐÃ SỬA: MomoVIPReturn → MomoReturnURL
-
-	// 	// Check payment status
-	// 	//momo.GET("/payment/status/:orderId", controllers.CheckPaymentStatus(db))
-	// 	//momo.POST("/payment/verify/:orderId", controllers.VerifyPaymentAndSetVIP(db))
-
-	// 	// Force complete (debug)
-	// 	//momo.POST("/payment/force-complete/:orderId", controllers.ForceCompletePayment(db))
-
-	// 	// Protected routes
-	// 	momoProtected := momo.Group("/vip")
-	// 	momoProtected.Use(middleware.AuthMiddleware())
-	// 	{
-	// 		momoProtected.GET("/history/:userId", controllers.GetUserVIPHistory(db))
-	// 		momoProtected.GET("/status/:userId", controllers.CheckUserVIP(db))
-	// 	}
-	// }
-
 	// ---------------- PAYMENT (MoMo VIP) ----------------
 	payment := api.Group("/payment")
 	{
-		// Public routes - không cần auth
-		payment.GET("/packages", controllers.GetVIPPackages)    // Danh sách gói VIP
-		payment.GET("/momo/callback", controllers.MoMoCallback) // Redirect từ MoMo
-		payment.POST("/momo/ipn", controllers.MoMoIPN)          // Webhook từ MoMo
+		payment.GET("/packages", controllers.GetVIPPackages)
+		payment.GET("/momo/callback", controllers.MoMoCallback)
+		payment.POST("/momo/ipn", controllers.MoMoIPN)
 		payment.GET("/status", controllers.CheckPaymentStatus)
 
-		// Protected routes - cần đăng nhập
 		paymentProtected := payment.Group("/")
 		paymentProtected.Use(middleware.AuthMiddleware())
 		{
-			paymentProtected.POST("/momo/create", controllers.CreateMoMoPayment) // Tạo thanh toán
-			paymentProtected.GET("/history", controllers.GetPaymentHistory)      // Lịch sử thanh toán
+			paymentProtected.POST("/momo/create", controllers.CreateMoMoPayment)
+			paymentProtected.GET("/history", controllers.GetPaymentHistory)
 		}
 	}
 
@@ -74,6 +48,40 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 		user.PUT("/profile", controllers.UpdateProfile)
 		user.POST("/change-password", controllers.ChangePassword)
 	}
+
+	// ============ USER LISTENING HISTORY ============
+	userHistory := api.Group("/user/listening-history")
+	userHistory.Use(middleware.AuthMiddleware(), middleware.DBMiddleware(db))
+	{
+		userHistory.POST("/:podcast_id", controllers.SavePodcastHistory)     // Lưu lịch sử
+		userHistory.GET("", controllers.GetListeningHistory)                 // Lấy danh sách
+		userHistory.GET("/:podcast_id", controllers.GetPodcastHistory)       // Lấy 1 podcast
+		userHistory.DELETE("/:podcast_id", controllers.DeletePodcastHistory) // Xóa 1 podcast
+		userHistory.DELETE("", controllers.ClearAllHistory)                  // Xóa tất cả
+	}
+
+	// ============ USER FAVORITES ============
+	// userFavorites := api.Group("/user/favorites")
+	// userFavorites.Use(middleware.AuthMiddleware(), middleware.DBMiddleware(db))
+	// {
+	// 	userFavorites.POST("/:podcast_id", controllers.AddFavorite)        // Thêm yêu thích
+	// 	userFavorites.DELETE("/:podcast_id", controllers.RemoveFavorite)   // Bỏ yêu thích
+	// 	userFavorites.GET("/:podcast_id/check", controllers.CheckFavorite) // Kiểm tra
+	// 	userFavorites.GET("", controllers.GetFavorites)                    // Danh sách
+	// }
+
+	// // ============ USER NOTIFICATIONS ============
+	// userNotifications := api.Group("/user/notifications")
+	// userNotifications.Use(middleware.AuthMiddleware(), middleware.DBMiddleware(db))
+	// {
+	// 	userNotifications.GET("", controllers.GetNotifications)                // Danh sách
+	// 	userNotifications.GET("/unread-count", controllers.GetUnreadCount)     // Đếm chưa đọc
+	// 	userNotifications.PUT("/:id/read", controllers.MarkNotificationAsRead) // Đánh dấu đã đọc
+	// 	userNotifications.PUT("/read-all", controllers.MarkAllAsRead)          // Đánh dấu tất cả
+	// 	userNotifications.DELETE("/:id", controllers.DeleteNotification)       // Xóa 1 cái
+	// 	userNotifications.DELETE("", controllers.DeleteAllNotifications)       // Xóa tất cả
+	// 	userNotifications.DELETE("/read", controllers.DeleteReadNotifications) // Xóa đã đọc
+	// }
 
 	// ---------------- USER NOTIFICATIONS ----------------
 	userNotifications := api.Group("/notifications")
@@ -106,11 +114,17 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 		admin.PATCH("/users/:id/role", controllers.UpdateUserRole)
 		admin.PATCH("/users/:id/toggle-active", controllers.ToggleUserActivation)
 
-		admin.GET("/notifications", controllers.GetAllNotifications)
-		admin.GET("/notifications/filter", controllers.GetNotificationsByAction)
-		admin.PUT("/notifications/:id/read", controllers.MarkNotificationAsRead)
-		admin.PUT("/notifications/read-all", controllers.MarkAllAsRead)
-		admin.DELETE("/notifications/:id", controllers.DeleteNotification)
+		// ============ ADMIN NOTIFICATIONS ============
+		adminNotif := admin.Group("/notifications")
+		{
+			adminNotif.GET("", controllers.GetAdminNotifications)                // Danh sách
+			adminNotif.GET("/unread-count", controllers.GetAdminUnreadCount)     // Đếm chưa đọc
+			adminNotif.PUT("/:id/read", controllers.MarkAdminNotificationAsRead) // Đánh dấu đã đọc
+			adminNotif.PUT("/read-all", controllers.MarkAllAdminAsRead)          // Đánh dấu tất cả
+			adminNotif.DELETE("/:id", controllers.DeleteAdminNotification)       // Xóa 1 cái
+			adminNotif.DELETE("", controllers.DeleteAllAdminNotifications)       // Xóa tất cả
+			adminNotif.DELETE("/read", controllers.DeleteReadAdminNotifications) // Xóa đã đọc
+		}
 	}
 
 	// ---------------- CATEGORY ----------------
@@ -136,12 +150,10 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 		publicPodcast.GET("/:id", controllers.GetPodcastByID)
 		publicPodcast.GET("/disabled", controllers.GetDisabledPodcasts)
 		publicPodcast.GET("/:id/ratings", controllers.GetPodcastRatings)
-
 		publicPodcast.GET("/featured", controllers.GetFeaturedPodcasts)
 		publicPodcast.GET("/:id/recommendations", controllers.GetRecommendedPodcasts)
 	}
 
-	// ---------------- FEATURED RATINGS ----------------
 	featuredRatings := api.Group("/ratings")
 	{
 		featuredRatings.GET("/featured", controllers.GetFeaturedReviews)
@@ -153,15 +165,6 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 		protectedPodcast.POST("/", controllers.CreatePodcastWithUpload)
 		protectedPodcast.PUT("/:id", controllers.UpdatePodcast)
 		protectedPodcast.POST("/:id/ratings", controllers.AddPodcastRating)
-
-		protectedPodcast.POST("/:id/favorite", controllers.ToggleYeuThichPodcast)
-		protectedPodcast.GET("/favorites/me", controllers.GetMyFavoritePodcasts)
-
-		protectedPodcast.POST("/:id/save", controllers.ToggleLuuPodcast)
-		protectedPodcast.GET("/saved/me", controllers.GetMySavedPodcasts)
-
-		protectedPodcast.POST("/:id/history", controllers.LuuLichSuNghe)
-		protectedPodcast.GET("/history/me", controllers.GetMyListeningHistory)
 	}
 
 	// ---------------- OTHER ----------------
@@ -179,7 +182,6 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 		ws.HandleBadgeWS(c.Writer, c.Request)
 	})
 
-	// WebSocket goroutines
 	go ws.HandleNotificationMessages()
 	go ws.HandleBadgeMessages()
 }

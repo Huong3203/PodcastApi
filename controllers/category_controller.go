@@ -14,9 +14,11 @@ import (
 	"github.com/gosimple/slug"
 )
 
-//  PUBLIC (Không cần đăng nhập)
+//
+// PUBLIC
+//
 
-// Public: Lấy danh sách danh mục (phân trang, tìm kiếm, chỉ active)
+// Lấy danh sách danh mục (active + phân trang + search)
 func GetDanhMucs(c *gin.Context) {
 	var danhMucs []models.DanhMuc
 	var total int64
@@ -27,14 +29,14 @@ func GetDanhMucs(c *gin.Context) {
 
 	search := c.Query("search")
 
-	query := config.DB.Model(&models.DanhMuc{}).Where("kich_hoat = ?", true) // chỉ active
+	query := config.DB.Model(&models.DanhMuc{}).Where("kich_hoat = ?", true)
 
 	if search != "" {
 		query = query.Where("LOWER(ten_danh_muc) LIKE ?", "%"+strings.ToLower(search)+"%")
 	}
 
 	query.Count(&total)
-	query.Offset(offset).Limit(limit).Order("ngay_tao DESC").Find(&danhMucs) // sửa thành ngay_tao
+	query.Offset(offset).Limit(limit).Order("ngay_tao DESC").Find(&danhMucs)
 
 	c.JSON(http.StatusOK, gin.H{
 		"data": danhMucs,
@@ -47,29 +49,31 @@ func GetDanhMucs(c *gin.Context) {
 	})
 }
 
-// Xem chi tiết danh mục
+// Xem chi tiết
 func GetDanhMucByID(c *gin.Context) {
 	role, _ := c.Get("vai_tro")
 
 	id := c.Param("id")
 	var danhMuc models.DanhMuc
+
 	if err := config.DB.First(&danhMuc, "id = ?", id).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy danh mục"})
 		return
 	}
 
-	// Người dùng thường chỉ xem được danh mục đã kích hoạt
 	if role != "admin" && !danhMuc.KichHoat {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Danh mục này chưa được kích hoạt"})
+		c.JSON(http.StatusForbidden, gin.H{"error": "Danh mục chưa được kích hoạt"})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{"data": danhMuc})
 }
 
-// ADMIN (Cần đăng nhập + role = admin)
+//
+// ADMIN
+//
 
-// Tạo danh mục mới
+// Tạo danh mục
 func CreateDanhMuc(c *gin.Context) {
 	if role, _ := c.Get("vai_tro"); role != "admin" {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Bạn không có quyền tạo danh mục"})
@@ -98,9 +102,14 @@ func CreateDanhMuc(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể tạo danh mục"})
 		return
 	}
-	// 🔹 Tạo thông báo cho admin
-	message := fmt.Sprintf("Danh mục mới '%s' đã được tạo bởi admin", danhMuc.TenDanhMuc)
-	_ = services.CreateNotification(c.GetString("user_id"), danhMuc.ID, "create_category", message)
+
+	// 🔔 Tạo thông báo
+	_ = services.CreateNotification(
+		c.GetString("user_id"),
+		danhMuc.ID,
+		"create_category",
+		fmt.Sprintf("Danh mục '%s' vừa được tạo", danhMuc.TenDanhMuc),
+	)
 
 	c.JSON(http.StatusCreated, gin.H{
 		"message": "Tạo danh mục thành công",
@@ -111,7 +120,7 @@ func CreateDanhMuc(c *gin.Context) {
 // Cập nhật danh mục
 func UpdateDanhMuc(c *gin.Context) {
 	if role, _ := c.Get("vai_tro"); role != "admin" {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Bạn không có quyền cập nhật danh mục"})
+		c.JSON(http.StatusForbidden, gin.H{"error": "Bạn không có quyền cập nhật"})
 		return
 	}
 
@@ -126,34 +135,37 @@ func UpdateDanhMuc(c *gin.Context) {
 	}
 
 	id := c.Param("id")
-	var danhMuc models.DanhMuc
-	if err := config.DB.First(&danhMuc, "id = ?", id).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy danh mục"})
+
+	var dm models.DanhMuc
+	if err := config.DB.First(&dm, "id = ?", id).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy"})
 		return
 	}
 
-	danhMuc.TenDanhMuc = input.TenDanhMuc
-	danhMuc.MoTa = input.MoTa
-	danhMuc.Slug = slug.Make(input.TenDanhMuc)
-	config.DB.Save(&danhMuc)
-	// 🔹 Tạo thông báo cho admin
-	message := fmt.Sprintf("Danh mục '%s' đã được cập nhật bởi admin", danhMuc.TenDanhMuc)
-	_ = services.CreateNotification(c.GetString("user_id"), danhMuc.ID, "update_category", message)
+	dm.TenDanhMuc = input.TenDanhMuc
+	dm.MoTa = input.MoTa
+	dm.Slug = slug.Make(input.TenDanhMuc)
 
-	c.JSON(http.StatusOK, gin.H{
-		"message": "Cập nhật danh mục thành công",
-		"data":    danhMuc,
-	})
+	config.DB.Save(&dm)
+
+	// 🔔 Notification
+	_ = services.CreateNotification(
+		c.GetString("user_id"),
+		dm.ID,
+		"update_category",
+		fmt.Sprintf("Danh mục '%s' vừa được cập nhật", dm.TenDanhMuc),
+	)
+
+	c.JSON(http.StatusOK, gin.H{"message": "Cập nhật thành công", "data": dm})
 }
 
-// ✅ Bật / Tắt danh mục
+// Bật/Tắt danh mục
 func ToggleDanhMucStatus(c *gin.Context) {
 	if role, _ := c.Get("vai_tro"); role != "admin" {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Bạn không có quyền thay đổi trạng thái danh mục"})
+		c.JSON(http.StatusForbidden, gin.H{"error": "Không có quyền"})
 		return
 	}
 
-	id := c.Param("id")
 	var body struct {
 		KichHoat bool `json:"kich_hoat"`
 	}
@@ -163,22 +175,28 @@ func ToggleDanhMucStatus(c *gin.Context) {
 		return
 	}
 
+	id := c.Param("id")
+
 	var dm models.DanhMuc
 	if err := config.DB.First(&dm, "id = ?", id).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy danh mục"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy"})
 		return
 	}
 
 	dm.KichHoat = body.KichHoat
 	config.DB.Save(&dm)
 
-	// 🔹 Tạo thông báo cho admin
 	status := "tắt"
 	if dm.KichHoat {
 		status = "bật"
 	}
-	message := fmt.Sprintf("Danh mục '%s' đã được %s bởi admin", dm.TenDanhMuc, status)
-	_ = services.CreateNotification(c.GetString("user_id"), dm.ID, "toggle_category", message)
+
+	_ = services.CreateNotification(
+		c.GetString("user_id"),
+		dm.ID,
+		"toggle_category",
+		fmt.Sprintf("Danh mục '%s' vừa được %s", dm.TenDanhMuc, status),
+	)
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Cập nhật trạng thái thành công",

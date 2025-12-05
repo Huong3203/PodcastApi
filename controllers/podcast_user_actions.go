@@ -53,11 +53,17 @@ func LuuLichSuNghe(c *gin.Context) {
 		})
 	}
 
-	// Tạo thông báo realtime (nếu muốn)
+	// 🔹 Tạo thông báo lưu lịch sử nghe
 	message := fmt.Sprintf("Người dùng đã nghe podcast %s", body.PodcastID)
-	if err := services.CreateNotification(userID, body.PodcastID, "listened", message); err != nil {
-		fmt.Println("Lỗi khi tạo thông báo:", err)
-	}
+	_ = services.CreateNotification(userID, body.PodcastID, "listened", message)
+
+	// 🔹 Tạo thông báo cập nhật tiến độ nghe
+	_ = services.CreateNotification(
+		userID,
+		body.PodcastID,
+		"listen_progress",
+		fmt.Sprintf("Tiến độ nghe podcast %s cập nhật đến %d giây", body.PodcastID, body.ViTri),
+	)
 
 	c.JSON(http.StatusOK, gin.H{"message": "Đã lưu lịch sử nghe"})
 }
@@ -82,7 +88,10 @@ func ToggleYeuThichPodcast(c *gin.Context) {
 			UpdateColumn("luot_yeu_thich", gorm.Expr("luot_yeu_thich + 1"))
 
 		message := fmt.Sprintf("Người dùng %s đã yêu thích podcast %s", userID, podcastID)
-		services.CreateNotification(userID, podcastID, "favorite", message)
+		_ = services.CreateNotification(userID, podcastID, "favorite", message)
+
+		_ = services.CreateNotification(userID, podcastID, "favorite_added",
+			fmt.Sprintf("Podcast %s đã được thêm vào danh sách yêu thích", podcastID))
 
 		c.JSON(http.StatusOK, gin.H{"message": "Đã yêu thích"})
 		return
@@ -94,7 +103,10 @@ func ToggleYeuThichPodcast(c *gin.Context) {
 		UpdateColumn("luot_yeu_thich", gorm.Expr("luot_yeu_thich - 1"))
 
 	message := fmt.Sprintf("Người dùng %s đã bỏ yêu thích podcast %s", userID, podcastID)
-	services.CreateNotification(userID, podcastID, "unfavorite", message)
+	_ = services.CreateNotification(userID, podcastID, "unfavorite", message)
+
+	_ = services.CreateNotification(userID, podcastID, "favorite_removed",
+		fmt.Sprintf("Podcast %s đã bị xóa khỏi danh sách yêu thích", podcastID))
 
 	c.JSON(http.StatusOK, gin.H{"message": "Đã bỏ yêu thích"})
 }
@@ -119,7 +131,10 @@ func ToggleLuuPodcast(c *gin.Context) {
 			UpdateColumn("luot_luu", gorm.Expr("luot_luu + 1"))
 
 		message := fmt.Sprintf("Người dùng %s đã lưu podcast %s vào thư viện", userID, podcastID)
-		services.CreateNotification(userID, podcastID, "saved", message)
+		_ = services.CreateNotification(userID, podcastID, "saved", message)
+
+		_ = services.CreateNotification(userID, podcastID, "saved_added",
+			fmt.Sprintf("Podcast %s đã được lưu vào thư viện", podcastID))
 
 		c.JSON(http.StatusOK, gin.H{"message": "Đã lưu podcast"})
 		return
@@ -131,7 +146,10 @@ func ToggleLuuPodcast(c *gin.Context) {
 		UpdateColumn("luot_luu", gorm.Expr("luot_luu - 1"))
 
 	message := fmt.Sprintf("Người dùng %s đã bỏ lưu podcast %s", userID, podcastID)
-	services.CreateNotification(userID, podcastID, "unsaved", message)
+	_ = services.CreateNotification(userID, podcastID, "unsaved", message)
+
+	_ = services.CreateNotification(userID, podcastID, "saved_removed",
+		fmt.Sprintf("Podcast %s đã bị xóa khỏi thư viện", podcastID))
 
 	c.JSON(http.StatusOK, gin.H{"message": "Đã bỏ lưu"})
 }
