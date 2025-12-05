@@ -109,7 +109,22 @@ func RegisterAdmin(c *gin.Context) {
 		return
 	}
 
-	// ❗ Kiểm tra email
+	// 1️⃣ Kiểm tra đã có admin nào chưa
+	var adminCount int64
+	config.DB.Model(&models.NguoiDung{}).Where("vai_tro = ?", "admin").Count(&adminCount)
+
+	isFirstAdmin := adminCount == 0
+
+	// 2️⃣ Nếu không phải admin đầu tiên → cần token admin
+	if !isFirstAdmin {
+		role, exists := c.Get("vai_tro")
+		if !exists || role != "admin" {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Chỉ admin mới có quyền truy cập"})
+			return
+		}
+	}
+
+	// 3️⃣ Kiểm tra email
 	var existing models.NguoiDung
 	if err := config.DB.Where("email = ? AND provider = ?", input.Email, "local").First(&existing).Error; err == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Email đã được sử dụng"})
@@ -127,7 +142,7 @@ func RegisterAdmin(c *gin.Context) {
 		Email:    input.Email,
 		MatKhau:  string(hashedPassword),
 		HoTen:    input.HoTen,
-		VaiTro:   "admin", // 🎯 Khác duy nhất so với Register()
+		VaiTro:   "admin",
 		KichHoat: true,
 		Provider: "local",
 	}
@@ -141,8 +156,9 @@ func RegisterAdmin(c *gin.Context) {
 	newAdmin.MatKhau = ""
 
 	c.JSON(http.StatusCreated, gin.H{
-		"message": "Tạo admin thành công",
-		"admin":   newAdmin,
-		"token":   token,
+		"message":     "Tạo admin thành công",
+		"first_admin": isFirstAdmin,
+		"admin":       newAdmin,
+		"token":       token,
 	})
 }
