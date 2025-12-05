@@ -1,4 +1,3 @@
-// routes/routes.go
 package routes
 
 import (
@@ -22,6 +21,7 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 		auth.POST("/register", controllers.Register)
 		auth.POST("/login", controllers.Login)
 		auth.POST("/google/clerk", controllers.ClerkLogin)
+		auth.POST("/register-admin", controllers.RegisterAdmin)
 	}
 
 	// ---------------- PAYMENT (MoMo VIP) ----------------

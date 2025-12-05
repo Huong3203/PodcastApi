@@ -95,3 +95,54 @@ func Login(c *gin.Context) {
 		"provider": "local",
 	})
 }
+
+func RegisterAdmin(c *gin.Context) {
+	type AdminRegisterInput struct {
+		Email   string `json:"email" binding:"required,email"`
+		MatKhau string `json:"mat_khau" binding:"required,min=6"`
+		HoTen   string `json:"ho_ten" binding:"required"`
+	}
+
+	var input AdminRegisterInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// ❗ Kiểm tra email
+	var existing models.NguoiDung
+	if err := config.DB.Where("email = ? AND provider = ?", input.Email, "local").First(&existing).Error; err == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Email đã được sử dụng"})
+		return
+	}
+
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(input.MatKhau), bcrypt.DefaultCost)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể mã hoá mật khẩu"})
+		return
+	}
+
+	newAdmin := models.NguoiDung{
+		ID:       uuid.New().String(),
+		Email:    input.Email,
+		MatKhau:  string(hashedPassword),
+		HoTen:    input.HoTen,
+		VaiTro:   "admin", // 🎯 Khác duy nhất so với Register()
+		KichHoat: true,
+		Provider: "local",
+	}
+
+	if err := config.DB.Create(&newAdmin).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi khi tạo admin"})
+		return
+	}
+
+	token, _ := utils.GenerateToken(newAdmin.ID, newAdmin.VaiTro)
+	newAdmin.MatKhau = ""
+
+	c.JSON(http.StatusCreated, gin.H{
+		"message": "Tạo admin thành công",
+		"admin":   newAdmin,
+		"token":   token,
+	})
+}
