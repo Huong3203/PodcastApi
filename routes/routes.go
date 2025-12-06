@@ -47,21 +47,27 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 		user.GET("/profile", controllers.GetProfile)
 		user.PUT("/profile", controllers.UpdateProfile)
 		user.POST("/change-password", controllers.ChangePassword)
+
+		// SAVED PODCASTS (nested under /users)
+		saved := user.Group("/saved")
+		{
+			saved.POST("/:id/toggle", controllers.ToggleLuuPodcast)
+			saved.GET("", controllers.GetMySavedPodcasts)
+		}
 	}
 
 	// ============ USER LISTENING HISTORY ============
-	// ❗ Chỉ giữ 1 nhóm này – BỎ nhóm trùng phía dưới
 	userHistory := api.Group("/user/listening-history")
 	userHistory.Use(middleware.AuthMiddleware(), middleware.DBMiddleware(db))
 	{
-		userHistory.POST("/:podcast_id", controllers.SavePodcastHistory)     // Lưu lịch sử
-		userHistory.GET("", controllers.GetListeningHistory)                 // Lấy danh sách
-		userHistory.GET("/:podcast_id", controllers.GetPodcastHistory)       // Lấy 1 podcast
-		userHistory.DELETE("/:podcast_id", controllers.DeletePodcastHistory) // Xóa 1 podcast
-		userHistory.DELETE("", controllers.ClearAllHistory)                  // Xóa tất cả
+		userHistory.POST("/:podcast_id", controllers.SavePodcastHistory)
+		userHistory.GET("", controllers.GetListeningHistory)
+		userHistory.GET("/:podcast_id", controllers.GetPodcastHistory)
+		userHistory.DELETE("/:podcast_id", controllers.DeletePodcastHistory)
+		userHistory.DELETE("", controllers.ClearAllHistory)
 	}
 
-	//============ USER FAVORITES ============
+	// ============ USER FAVORITES ============
 	userFavorites := api.Group("/user/favorites")
 	userFavorites.Use(middleware.AuthMiddleware(), middleware.DBMiddleware(db))
 	{
@@ -151,13 +157,6 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 		protectedPodcast.POST("/", controllers.CreatePodcastWithUpload)
 		protectedPodcast.PUT("/:id", controllers.UpdatePodcast)
 		protectedPodcast.POST("/:id/ratings", controllers.AddPodcastRating)
-	}
-
-	// ---------------- SAVED PODCAST ----------------
-	saved := user.Group("/saved")
-	{
-		saved.POST("/:id/toggle", controllers.ToggleLuuPodcast)
-		saved.GET("", controllers.GetMySavedPodcasts)
 	}
 
 	// ---------------- OTHER ----------------

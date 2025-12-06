@@ -2,8 +2,8 @@ package controllers
 
 import (
 	"net/http"
+	"time"
 
-	"github.com/Huong3203/APIPodcast/config"
 	"github.com/Huong3203/APIPodcast/models"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -12,105 +12,127 @@ import (
 
 // ==================== ADD FAVORITE ====================
 func AddFavorite(c *gin.Context) {
-	userID := c.GetString("user_id")
-	podcastID := c.Param("podcast_id")
+	db := c.MustGet("db").(*gorm.DB)
 
-	if userID == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Bạn cần đăng nhập"})
+	userID, _ := uuid.Parse(c.GetString("user_id"))
+	podcastID, err := uuid.Parse(c.Param("podcast_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid podcast_id"})
 		return
 	}
 
-	// Kiểm tra tồn tại chưa
-	var fav models.PodcastYeuThich
-	err := config.DB.Where("nguoi_dung_id = ? AND podcast_id = ?", userID, podcastID).
-		First(&fav).Error
+	// Check if podcast exists
+	var podcast models.Podcast
+	if err := db.First(&podcast, "id = ?", podcastID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Podcast not found"})
+		return
+	}
 
+	// Check if already favorited
+	var existing models.Favorite
+	err = db.Where("user_id = ? AND podcast_id = ?", userID, podcastID).First(&existing).Error
 	if err == nil {
-		// Đã tồn tại
-		c.JSON(http.StatusOK, gin.H{"message": "Đã yêu thích trước đó"})
+		c.JSON(http.StatusOK, gin.H{"message": "Already favorited"})
 		return
 	}
 
-	// Tạo mới
-	fav = models.PodcastYeuThich{
-		ID:          uuid.New().String(),
-		NguoiDungID: userID,
-		PodcastID:   podcastID,
+	// Create favorite
+	favorite := models.Favorite{
+		ID:        uuid.New(),
+		UserID:    userID,
+		PodcastID: podcastID,
+		CreatedAt: time.Now(),
 	}
 
-	if err := config.DB.Create(&fav).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi thêm yêu thích"})
+	if err := db.Create(&favorite).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to add favorite"})
 		return
 	}
 
-	// +1 lượt yêu thích
-	config.DB.Model(&models.Podcast{}).
+	// Increment favorite count
+	db.Model(&models.Podcast{}).
 		Where("id = ?", podcastID).
-		UpdateColumn("luot_yeu_thich", gorm.Expr("luot_yeu_thich + 1"))
+		UpdateColumn("favorite_count", gorm.Expr("favorite_count + 1"))
 
-	c.JSON(http.StatusOK, gin.H{"message": "Đã thêm yêu thích"})
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Added to favorites",
+		"data":    favorite,
+	})
 }
 
 // ==================== REMOVE FAVORITE ====================
 func RemoveFavorite(c *gin.Context) {
-	userID := c.GetString("user_id")
-	podcastID := c.Param("podcast_id")
+	db := c.MustGet("db").(*gorm.DB)
 
-	var fav models.PodcastYeuThich
-	err := config.DB.Where("nguoi_dung_id = ? AND podcast_id = ?", userID, podcastID).
-		First(&fav).Error
-
-	if err == gorm.ErrRecordNotFound {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Podcast không nằm trong danh sách yêu thích"})
+	userID, _ := uuid.Parse(c.GetString("user_id"))
+	podcastID, err := uuid.Parse(c.Param("podcast_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid podcast_id"})
 		return
 	}
 
-	config.DB.Delete(&fav)
+	result := db.Where("user_id = ? AND podcast_id = ?", userID, podcastID).
+		Delete(&models.Favorite{})
 
-	// -1 lượt yêu thích
-	config.DB.Model(&models.Podcast{}).
+	if result.RowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Favorite not found"})
+		return
+	}
+
+	// Decrement favorite count
+	db.Model(&models.Podcast{}).
 		Where("id = ?", podcastID).
-		UpdateColumn("luot_yeu_thich", gorm.Expr("luot_yeu_thich - 1"))
+		UpdateColumn("favorite_count", gorm.Expr("GREATEST(favorite_count - 1, 0)"))
 
-	c.JSON(http.StatusOK, gin.H{"message": "Đã bỏ yêu thích"})
+	c.JSON(http.StatusOK, gin.H{"message": "Removed from favorites"})
 }
 
 // ==================== CHECK FAVORITE ====================
 func CheckFavorite(c *gin.Context) {
-	userID := c.GetString("user_id")
-	podcastID := c.Param("podcast_id")
+	db := c.MustGet("db").(*gorm.DB)
 
-	var fav models.PodcastYeuThich
-	err := config.DB.Where("nguoi_dung_id = ? AND podcast_id = ?", userID, podcastID).
-		First(&fav).Error
+	userID, _ := uuid.Parse(c.GetString("user_id"))
+	podcastID, err := uuid.Parse(c.Param("podcast_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid podcast_id"})
+		return
+	}
+
+	var favorite models.Favorite
+	err = db.Where("user_id = ? AND podcast_id = ?", userID, podcastID).First(&favorite).Error
+
+	isFavorited := err == nil
 
 	c.JSON(http.StatusOK, gin.H{
-		"is_favorite": err == nil,
+		"is_favorited": isFavorited,
 	})
 }
 
-// ==================== GET FAVORITES ====================
+// ==================== GET FAVORITES LIST ====================
 func GetFavorites(c *gin.Context) {
-	userID := c.GetString("user_id")
+	db := c.MustGet("db").(*gorm.DB)
 
-	var list []models.PodcastYeuThich
-	config.DB.Preload("Podcast").Preload("Podcast.TaiLieu").
-		Where("nguoi_dung_id = ?", userID).
-		Order("ngay_thich DESC").
-		Find(&list)
+	userID, _ := uuid.Parse(c.GetString("user_id"))
 
-	// Chuẩn hóa dữ liệu trả về
-	var result []gin.H
-	for _, f := range list {
-		result = append(result, gin.H{
-			"id":         f.Podcast.ID,
-			"tieu_de":    f.Podcast.TieuDe,
-			"mo_ta":      f.Podcast.MoTa,
-			"hinh_anh":   f.Podcast.HinhAnhDaiDien,
-			"tom_tat":    f.Podcast.TaiLieu.TomTat,
-			"ngay_thich": f.NgayThich,
-		})
+	var favorites []models.Favorite
+	err := db.Where("user_id = ?", userID).
+		Preload("Podcast").
+		Order("created_at DESC").
+		Find(&favorites).Error
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get favorites"})
+		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"data": result})
+	// Extract podcasts
+	var podcasts []models.Podcast
+	for _, fav := range favorites {
+		podcasts = append(podcasts, fav.Podcast)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"data":  podcasts,
+		"total": len(podcasts),
+	})
 }

@@ -1,14 +1,21 @@
 package models
 
-import "time"
+import (
+	"time"
 
-type PodcastLuu struct {
-	ID          string    `gorm:"type:char(36);primaryKey" json:"id"`
-	NguoiDungID string    `gorm:"type:char(36);not null" json:"nguoi_dung_id"`
-	PodcastID   string    `gorm:"type:char(36);not null" json:"podcast_id"`
-	NgayLuu     time.Time `gorm:"autoCreateTime" json:"ngay_luu"`
+	"github.com/google/uuid"
+)
 
-	// Quan hệ (optional, không bắt buộc nhưng hữu ích khi join)
-	NguoiDung NguoiDung `gorm:"foreignKey:NguoiDungID" json:"nguoi_dung,omitempty"`
-	Podcast   Podcast   `gorm:"foreignKey:PodcastID" json:"podcast,omitempty"`
+type SavedPodcast struct {
+	ID        uuid.UUID `gorm:"type:char(36);primaryKey" json:"id"`
+	UserID    uuid.UUID `gorm:"type:char(36);not null;uniqueIndex:idx_user_podcast_saved" json:"user_id"`
+	PodcastID uuid.UUID `gorm:"type:char(36);not null;uniqueIndex:idx_user_podcast_saved" json:"podcast_id"`
+	SavedAt   time.Time `gorm:"autoCreateTime" json:"saved_at"`
+
+	User    NguoiDung `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE" json:"-"`
+	Podcast Podcast   `gorm:"foreignKey:PodcastID;constraint:OnDelete:CASCADE" json:"podcast"`
+}
+
+func (SavedPodcast) TableName() string {
+	return "saved_podcasts"
 }

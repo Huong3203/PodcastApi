@@ -47,8 +47,8 @@ func ConnectDB() {
 		&models.TaiLieu{},
 		&models.Podcast{},
 		&models.DanhGia{},
-		&models.PodcastYeuThich{},
-		&models.PodcastLuu{},
+		&models.Favorite{},
+		&models.SavedPodcast{},
 		&models.ListeningHistory{},
 		&models.Notification{},
 	)

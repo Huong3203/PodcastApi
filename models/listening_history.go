@@ -22,3 +22,7 @@ type ListeningHistory struct {
 	User    NguoiDung `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE" json:"-"`
 	Podcast Podcast   `gorm:"foreignKey:PodcastID;constraint:OnDelete:CASCADE" json:"podcast"`
 }
+
+func (ListeningHistory) TableName() string {
+	return "listening_histories"
+}
