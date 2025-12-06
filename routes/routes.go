@@ -41,7 +41,7 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 	}
 
 	// ---------------- USER ----------------
-	user := api.Group("/user")
+	user := api.Group("/users")
 	user.Use(middleware.AuthMiddleware())
 	{
 		user.GET("/profile", controllers.GetProfile)
