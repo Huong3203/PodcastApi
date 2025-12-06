@@ -49,7 +49,7 @@ func ConnectDB() {
 		&models.DanhGia{},
 		&models.PodcastYeuThich{},
 		&models.PodcastLuu{},
-		&models.LichSuNghe{},
+		&models.ListeningHistory{},
 		&models.Notification{},
 	)
 	if err != nil {
