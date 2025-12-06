@@ -133,7 +133,7 @@ func SearchPodcast(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": podcasts})
 }
 
-// Xem chi tiết podcast
+// Xem chi tiết podcast (WITH AUTO-SAVE LISTENING HISTORY)
 func GetPodcastByID(c *gin.Context) {
 	db := config.DB
 	id := c.Param("id")
@@ -150,6 +150,40 @@ func GetPodcastByID(c *gin.Context) {
 
 	// Tăng lượt xem
 	db.Model(&podcast).UpdateColumn("luot_xem", gorm.Expr("luot_xem + ?", 1))
+
+	// ✅ AUTO-SAVE LISTENING HISTORY (if user is logged in)
+	userIDStr := c.GetString("user_id")
+	if userIDStr != "" {
+		userID, err := uuid.Parse(userIDStr)
+		if err == nil {
+			podcastID, _ := uuid.Parse(id)
+
+			var history models.ListeningHistory
+			now := time.Now()
+
+			// Check if history exists
+			result := db.Where("user_id = ? AND podcast_id = ?", userID, podcastID).First(&history)
+
+			if result.Error == gorm.ErrRecordNotFound {
+				// Create new history
+				history = models.ListeningHistory{
+					ID:              uuid.New(),
+					UserID:          userID,
+					PodcastID:       podcastID,
+					LastPosition:    0,
+					Duration:        podcast.ThoiLuongGiay,
+					FirstListenedAt: now,
+					LastListenedAt:  now,
+					Completed:       false,
+				}
+				db.Create(&history)
+			} else if result.Error == nil {
+				// Update last listened time
+				history.LastListenedAt = now
+				db.Save(&history)
+			}
+		}
+	}
 
 	// Gán TomTat
 	if podcast.TailieuID != "" {
