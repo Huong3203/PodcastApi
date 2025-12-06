@@ -9,6 +9,7 @@ import (
 )
 
 func SetupRoutes(r *gin.Engine, db *gorm.DB) {
+
 	r.GET("/ping", func(c *gin.Context) {
 		c.JSON(200, gin.H{"message": "pong"})
 	})
@@ -41,14 +42,15 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 
 	// ---------------- USER ----------------
 	user := api.Group("/users")
+	user.Use(middleware.AuthMiddleware())
 	{
-		user.Use(middleware.AuthMiddleware())
 		user.GET("/profile", controllers.GetProfile)
 		user.PUT("/profile", controllers.UpdateProfile)
 		user.POST("/change-password", controllers.ChangePassword)
 	}
 
 	// ============ USER LISTENING HISTORY ============
+	// ❗ Chỉ giữ 1 nhóm này – BỎ nhóm trùng phía dưới
 	userHistory := api.Group("/user/listening-history")
 	userHistory.Use(middleware.AuthMiddleware(), middleware.DBMiddleware(db))
 	{
@@ -63,31 +65,29 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 	userFavorites := api.Group("/user/favorites")
 	userFavorites.Use(middleware.AuthMiddleware(), middleware.DBMiddleware(db))
 	{
-		userFavorites.POST("/:podcast_id", controllers.AddFavorite)        // Thêm yêu thích
-		userFavorites.DELETE("/:podcast_id", controllers.RemoveFavorite)   // Bỏ yêu thích
-		userFavorites.GET("/:podcast_id/check", controllers.CheckFavorite) // Kiểm tra
-		userFavorites.GET("", controllers.GetFavorites)                    // Danh sách
+		userFavorites.POST("/:podcast_id", controllers.AddFavorite)
+		userFavorites.DELETE("/:podcast_id", controllers.RemoveFavorite)
+		userFavorites.GET("/:podcast_id/check", controllers.CheckFavorite)
+		userFavorites.GET("", controllers.GetFavorites)
 	}
 
 	// ============ USER NOTIFICATIONS ============
 	userNotifications := api.Group("/user/notifications")
 	userNotifications.Use(middleware.AuthMiddleware(), middleware.DBMiddleware(db))
 	{
-		userNotifications.GET("", controllers.GetNotifications)                // Danh sách
-		userNotifications.GET("/unread-count", controllers.GetUnreadCount)     // Đếm chưa đọc
-		userNotifications.PUT("/:id/read", controllers.MarkNotificationAsRead) // Đánh dấu đã đọc
-		userNotifications.PUT("/read-all", controllers.MarkAllAsRead)          // Đánh dấu tất cả
-		userNotifications.DELETE("/:id", controllers.DeleteNotification)       // Xóa 1 cái
-		userNotifications.DELETE("", controllers.DeleteAllNotifications)       // Xóa tất cả
-		userNotifications.DELETE("/read", controllers.DeleteReadNotifications) // Xóa đã đọc
+		userNotifications.GET("", controllers.GetNotifications)
+		userNotifications.GET("/unread-count", controllers.GetUnreadCount)
+		userNotifications.PUT("/:id/read", controllers.MarkNotificationAsRead)
+		userNotifications.PUT("/read-all", controllers.MarkAllAsRead)
+		userNotifications.DELETE("/:id", controllers.DeleteNotification)
+		userNotifications.DELETE("", controllers.DeleteAllNotifications)
+		userNotifications.DELETE("/read", controllers.DeleteReadNotifications)
 	}
 
 	// ---------------- ADMIN ----------------
 	admin := api.Group("/admin")
+	admin.Use(middleware.AuthMiddleware(), middleware.DBMiddleware(db))
 	{
-		admin.Use(middleware.AuthMiddleware(), middleware.DBMiddleware(db))
-
-		// Admin VIP management
 		admin.GET("/vip-payments", controllers.GetAllVIPPayments(db))
 		admin.GET("/vip-users", controllers.GetVIPUsers(db))
 
@@ -104,16 +104,16 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 		admin.PATCH("/users/:id/role", controllers.UpdateUserRole)
 		admin.PATCH("/users/:id/toggle-active", controllers.ToggleUserActivation)
 
-		// ============ ADMIN NOTIFICATIONS ============
+		// ADMIN NOTIFICATIONS
 		adminNotif := admin.Group("/notifications")
 		{
-			adminNotif.GET("", controllers.GetAdminNotifications)                // Danh sách
-			adminNotif.GET("/unread-count", controllers.GetAdminUnreadCount)     // Đếm chưa đọc
-			adminNotif.PUT("/:id/read", controllers.MarkAdminNotificationAsRead) // Đánh dấu đã đọc
-			adminNotif.PUT("/read-all", controllers.MarkAllAdminAsRead)          // Đánh dấu tất cả
-			adminNotif.DELETE("/:id", controllers.DeleteAdminNotification)       // Xóa 1 cái
-			adminNotif.DELETE("", controllers.DeleteAllAdminNotifications)       // Xóa tất cả
-			adminNotif.DELETE("/read", controllers.DeleteReadAdminNotifications) // Xóa đã đọc
+			adminNotif.GET("", controllers.GetAdminNotifications)
+			adminNotif.GET("/unread-count", controllers.GetAdminUnreadCount)
+			adminNotif.PUT("/:id/read", controllers.MarkAdminNotificationAsRead)
+			adminNotif.PUT("/read-all", controllers.MarkAllAdminAsRead)
+			adminNotif.DELETE("/:id", controllers.DeleteAdminNotification)
+			adminNotif.DELETE("", controllers.DeleteAllAdminNotifications)
+			adminNotif.DELETE("/read", controllers.DeleteReadAdminNotifications)
 		}
 	}
 
@@ -144,55 +144,20 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 		publicPodcast.GET("/:id/recommendations", controllers.GetRecommendedPodcasts)
 	}
 
-	// LISTENING HISTORY GROUP
-	listening := user.Group("/listening-history")
-	{
-		// Lưu / cập nhật lịch sử nghe
-		listening.POST("/:podcast_id", controllers.SavePodcastHistory)
-
-		// Lấy tất cả lịch sử nghe
-		listening.GET("", controllers.GetListeningHistory)
-
-		// Lấy lịch sử của 1 podcast
-		listening.GET("/:podcast_id", controllers.GetPodcastHistory)
-
-		// Xóa 1 lịch sử podcast
-		listening.DELETE("/:podcast_id", controllers.DeletePodcastHistory)
-
-		// Xóa toàn bộ lịch sử nghe
-		listening.DELETE("", controllers.ClearAllHistory)
-	}
-
-	// // FAVORITE GROUP
-	// favorites := user.Group("/favorites")
-	// {
-	// 	// Toggle yêu thích podcast
-	// 	favorites.POST("/:id/toggle", controllers.ToggleYeuThichPodcast)
-
-	// 	// Lấy danh sách yêu thích
-	// 	favorites.GET("", controllers.GetMyFavoritePodcasts)
-	// }
-
-	// SAVED PODCAST GROUP
-	saved := user.Group("/saved")
-	{
-		// Toggle lưu podcast
-		saved.POST("/:id/toggle", controllers.ToggleLuuPodcast)
-		// Lấy danh sách đã lưu
-		saved.GET("", controllers.GetMySavedPodcasts)
-	}
-
-	featuredRatings := api.Group("/ratings")
-	{
-		featuredRatings.GET("/featured", controllers.GetFeaturedReviews)
-	}
-
+	// ---------------- AUTH REQUIRED PODCAST ----------------
 	protectedPodcast := api.Group("/podcasts")
+	protectedPodcast.Use(middleware.AuthMiddleware())
 	{
-		protectedPodcast.Use(middleware.AuthMiddleware())
 		protectedPodcast.POST("/", controllers.CreatePodcastWithUpload)
 		protectedPodcast.PUT("/:id", controllers.UpdatePodcast)
 		protectedPodcast.POST("/:id/ratings", controllers.AddPodcastRating)
+	}
+
+	// ---------------- SAVED PODCAST ----------------
+	saved := user.Group("/saved")
+	{
+		saved.POST("/:id/toggle", controllers.ToggleLuuPodcast)
+		saved.GET("", controllers.GetMySavedPodcasts)
 	}
 
 	// ---------------- OTHER ----------------

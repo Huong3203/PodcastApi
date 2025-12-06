@@ -19,8 +19,7 @@ type SavePodcastHistoryRequest struct {
 	Completed    *bool `json:"completed,omitempty"`
 }
 
-// ========================= SAVE LISTENING HISTORY =========================
-// POST /api/user/listening-history/:podcast_id
+// ========================= SAVE HISTORY =========================
 func SavePodcastHistory(c *gin.Context) {
 	db := c.MustGet("db").(*gorm.DB)
 
@@ -29,11 +28,7 @@ func SavePodcastHistory(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 		return
 	}
-	userID, err := uuid.Parse(userIDStr)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user_id"})
-		return
-	}
+	userID, _ := uuid.Parse(userIDStr)
 
 	podcastIDStr := c.Param("podcast_id")
 	podcastID, err := uuid.Parse(podcastIDStr)
@@ -56,11 +51,13 @@ func SavePodcastHistory(c *gin.Context) {
 	}
 
 	var history models.ListeningHistory
-	result := db.Where("user_id = ? AND podcast_id = ?", userID, podcastID).First(&history)
 	now := time.Now()
+
+	result := db.Where("user_id = ? AND podcast_id = ?", userID, podcastID).First(&history)
 
 	if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 
+		// Create new history
 		history = models.ListeningHistory{
 			UserID:          userID,
 			PodcastID:       podcastID,
@@ -77,37 +74,37 @@ func SavePodcastHistory(c *gin.Context) {
 		}
 
 		if err := db.Create(&history).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create listening history"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create history"})
 			return
 		}
 
-		// Increase view count only first time
-		db.Model(&models.Podcast{}).Where("id = ?", podcastID).
+		// Increase view count first time only
+		db.Model(&models.Podcast{}).
+			Where("id = ?", podcastID).
 			UpdateColumn("view_count", gorm.Expr("view_count + 1"))
 
 	} else if result.Error == nil {
 
+		// Update history
 		history.LastListenedAt = now
 		history.LastPosition = req.LastPosition
 
-		// Update duration when higher
 		if req.Duration > history.Duration {
 			history.Duration = req.Duration
 		}
 
-		// Mark completed
 		if req.Completed != nil && *req.Completed && !history.Completed {
 			history.Completed = true
 			history.CompletedAt = &now
 		}
 
 		if err := db.Save(&history).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update listening history"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update"})
 			return
 		}
 
 	} else {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "DB error"})
 		return
 	}
 
@@ -118,34 +115,16 @@ func SavePodcastHistory(c *gin.Context) {
 	})
 }
 
-// ========================= GET LISTENING HISTORY =========================
-// GET /api/user/listening-history?completed=&page=&limit=&sort=&time=&from=&to=
+// ========================= GET HISTORY LIST =========================
 func GetListeningHistory(c *gin.Context) {
 	db := c.MustGet("db").(*gorm.DB)
 
-	userIDStr := c.GetString("user_id")
-	if userIDStr == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
-		return
-	}
-	userID, err := uuid.Parse(userIDStr)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user_id"})
-		return
-	}
+	userID, _ := uuid.Parse(c.GetString("user_id"))
 
-	// Paging
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
-	if page < 1 {
-		page = 1
-	}
-	if limit < 1 || limit > 100 {
-		limit = 10
-	}
 	offset := (page - 1) * limit
 
-	// Sorting
 	sortOrder := c.DefaultQuery("sort", "desc")
 	orderClause := "last_listened_at DESC"
 	if sortOrder == "asc" {
@@ -154,7 +133,7 @@ func GetListeningHistory(c *gin.Context) {
 
 	query := db.Model(&models.ListeningHistory{}).Where("user_id = ?", userID)
 
-	// Filter by completed
+	// Filter completed
 	if completed := c.Query("completed"); completed != "" {
 		if completed == "true" {
 			query = query.Where("completed = ?", true)
@@ -166,7 +145,7 @@ func GetListeningHistory(c *gin.Context) {
 	// Time filter
 	timeFilter := c.DefaultQuery("time", "all")
 	now := time.Now()
-	start := time.Time{}
+	var start time.Time
 
 	switch timeFilter {
 	case "today":
@@ -184,32 +163,22 @@ func GetListeningHistory(c *gin.Context) {
 	case "custom":
 		from := c.Query("from")
 		to := c.Query("to")
-
 		if from != "" && to != "" {
-			fromTime, err1 := time.Parse("2006-01-02", from)
-			toTime, err2 := time.Parse("2006-01-02", to)
-			if err1 == nil && err2 == nil {
-				query = query.Where("last_listened_at BETWEEN ? AND ?", fromTime, toTime)
-			}
+			fromTime, _ := time.Parse("2006-01-02", from)
+			toTime, _ := time.Parse("2006-01-02", to)
+			query = query.Where("last_listened_at BETWEEN ? AND ?", fromTime, toTime)
 		}
 	}
 
-	// Get total count
 	var total int64
 	query.Count(&total)
 
-	// Fetch data
 	var history []models.ListeningHistory
-	err = query.Preload("Podcast").
+	query.Preload("Podcast").
 		Order(orderClause).
 		Limit(limit).
 		Offset(offset).
-		Find(&history).Error
-
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load history"})
-		return
-	}
+		Find(&history)
 
 	c.JSON(http.StatusOK, gin.H{
 		"data":       history,
@@ -220,20 +189,12 @@ func GetListeningHistory(c *gin.Context) {
 	})
 }
 
-// ========================= GET PODCAST HISTORY =========================
-// GET /api/user/listening-history/:podcast_id
+// ========================= GET ONE PODCAST HISTORY =========================
 func GetPodcastHistory(c *gin.Context) {
 	db := c.MustGet("db").(*gorm.DB)
 
-	userIDStr := c.GetString("user_id")
-	if userIDStr == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
-		return
-	}
-	userID, _ := uuid.Parse(userIDStr)
-
-	podcastIDStr := c.Param("podcast_id")
-	podcastID, err := uuid.Parse(podcastIDStr)
+	userID, _ := uuid.Parse(c.GetString("user_id"))
+	podcastID, err := uuid.Parse(c.Param("podcast_id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid podcast id"})
 		return
@@ -252,32 +213,24 @@ func GetPodcastHistory(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": history})
 }
 
-// ========================= DELETE PODCAST HISTORY =========================
-// DELETE /api/user/listening-history/:podcast_id
+// ========================= DELETE ONE =========================
 func DeletePodcastHistory(c *gin.Context) {
 	db := c.MustGet("db").(*gorm.DB)
 
-	userIDStr := c.GetString("user_id")
-	userID, _ := uuid.Parse(userIDStr)
+	userID, _ := uuid.Parse(c.GetString("user_id"))
+	podcastID, _ := uuid.Parse(c.Param("podcast_id"))
 
-	podcastIDStr := c.Param("podcast_id")
-	podcastID, err := uuid.Parse(podcastIDStr)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid podcast id"})
-		return
-	}
+	db.Where("user_id = ? AND podcast_id = ?", userID, podcastID).
+		Delete(&models.ListeningHistory{})
 
-	db.Where("user_id = ? AND podcast_id = ?", userID, podcastID).Delete(&models.ListeningHistory{})
 	c.JSON(http.StatusOK, gin.H{"message": "Deleted"})
 }
 
-// ========================= CLEAR ALL HISTORY =========================
-// DELETE /api/user/listening-history
+// ========================= CLEAR ALL =========================
 func ClearAllHistory(c *gin.Context) {
 	db := c.MustGet("db").(*gorm.DB)
 
-	userIDStr := c.GetString("user_id")
-	userID, _ := uuid.Parse(userIDStr)
+	userID, _ := uuid.Parse(c.GetString("user_id"))
 
 	db.Where("user_id = ?", userID).Delete(&models.ListeningHistory{})
 	c.JSON(http.StatusOK, gin.H{"message": "All history cleared"})
