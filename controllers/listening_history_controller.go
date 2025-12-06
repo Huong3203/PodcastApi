@@ -13,13 +13,7 @@ import (
 	"gorm.io/gorm"
 )
 
-type SavePodcastHistoryRequest struct {
-	LastPosition int   `json:"last_position" binding:"required,min=0"`
-	Duration     int   `json:"duration" binding:"required,min=1"`
-	Completed    *bool `json:"completed,omitempty"`
-}
-
-// ========================= SAVE HISTORY =========================
+// ========================= SAVE HISTORY (SIMPLE) =========================
 func SavePodcastHistory(c *gin.Context) {
 	db := c.MustGet("db").(*gorm.DB)
 
@@ -37,12 +31,6 @@ func SavePodcastHistory(c *gin.Context) {
 		return
 	}
 
-	var req SavePodcastHistoryRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
 	// Check podcast exist
 	var podcast models.Podcast
 	if err := db.First(&podcast, "id = ?", podcastID).Error; err != nil {
@@ -56,21 +44,12 @@ func SavePodcastHistory(c *gin.Context) {
 	result := db.Where("user_id = ? AND podcast_id = ?", userID, podcastID).First(&history)
 
 	if errors.Is(result.Error, gorm.ErrRecordNotFound) {
-
 		// Create new history
 		history = models.ListeningHistory{
-			UserID:          userID,
-			PodcastID:       podcastID,
-			LastPosition:    req.LastPosition,
-			Duration:        req.Duration,
-			FirstListenedAt: now,
-			LastListenedAt:  now,
-			Completed:       false,
-		}
-
-		if req.Completed != nil && *req.Completed {
-			history.Completed = true
-			history.CompletedAt = &now
+			ID:         uuid.New(),
+			UserID:     userID,
+			PodcastID:  podcastID,
+			ListenedAt: now,
 		}
 
 		if err := db.Create(&history).Error; err != nil {
@@ -84,25 +63,12 @@ func SavePodcastHistory(c *gin.Context) {
 			UpdateColumn("view_count", gorm.Expr("view_count + 1"))
 
 	} else if result.Error == nil {
-
-		// Update history
-		history.LastListenedAt = now
-		history.LastPosition = req.LastPosition
-
-		if req.Duration > history.Duration {
-			history.Duration = req.Duration
-		}
-
-		if req.Completed != nil && *req.Completed && !history.Completed {
-			history.Completed = true
-			history.CompletedAt = &now
-		}
-
+		// Just update listened time
+		history.ListenedAt = now
 		if err := db.Save(&history).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update"})
 			return
 		}
-
 	} else {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "DB error"})
 		return
@@ -126,21 +92,12 @@ func GetListeningHistory(c *gin.Context) {
 	offset := (page - 1) * limit
 
 	sortOrder := c.DefaultQuery("sort", "desc")
-	orderClause := "last_listened_at DESC"
+	orderClause := "listened_at DESC"
 	if sortOrder == "asc" {
-		orderClause = "last_listened_at ASC"
+		orderClause = "listened_at ASC"
 	}
 
 	query := db.Model(&models.ListeningHistory{}).Where("user_id = ?", userID)
-
-	// Filter completed
-	if completed := c.Query("completed"); completed != "" {
-		if completed == "true" {
-			query = query.Where("completed = ?", true)
-		} else if completed == "false" {
-			query = query.Where("completed = ?", false)
-		}
-	}
 
 	// Time filter
 	timeFilter := c.DefaultQuery("time", "all")
@@ -150,23 +107,23 @@ func GetListeningHistory(c *gin.Context) {
 	switch timeFilter {
 	case "today":
 		start = now.Truncate(24 * time.Hour)
-		query = query.Where("last_listened_at >= ?", start)
+		query = query.Where("listened_at >= ?", start)
 	case "week":
 		start = now.AddDate(0, 0, -7)
-		query = query.Where("last_listened_at >= ?", start)
+		query = query.Where("listened_at >= ?", start)
 	case "month":
 		start = now.AddDate(0, -1, 0)
-		query = query.Where("last_listened_at >= ?", start)
+		query = query.Where("listened_at >= ?", start)
 	case "year":
 		start = now.AddDate(-1, 0, 0)
-		query = query.Where("last_listened_at >= ?", start)
+		query = query.Where("listened_at >= ?", start)
 	case "custom":
 		from := c.Query("from")
 		to := c.Query("to")
 		if from != "" && to != "" {
 			fromTime, _ := time.Parse("2006-01-02", from)
 			toTime, _ := time.Parse("2006-01-02", to)
-			query = query.Where("last_listened_at BETWEEN ? AND ?", fromTime, toTime)
+			query = query.Where("listened_at BETWEEN ? AND ?", fromTime, toTime)
 		}
 	}
 
@@ -220,8 +177,13 @@ func DeletePodcastHistory(c *gin.Context) {
 	userID, _ := uuid.Parse(c.GetString("user_id"))
 	podcastID, _ := uuid.Parse(c.Param("podcast_id"))
 
-	db.Where("user_id = ? AND podcast_id = ?", userID, podcastID).
+	result := db.Where("user_id = ? AND podcast_id = ?", userID, podcastID).
 		Delete(&models.ListeningHistory{})
+
+	if result.RowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "History not found"})
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Deleted"})
 }
@@ -232,6 +194,10 @@ func ClearAllHistory(c *gin.Context) {
 
 	userID, _ := uuid.Parse(c.GetString("user_id"))
 
-	db.Where("user_id = ?", userID).Delete(&models.ListeningHistory{})
-	c.JSON(http.StatusOK, gin.H{"message": "All history cleared"})
+	result := db.Where("user_id = ?", userID).Delete(&models.ListeningHistory{})
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "All history cleared",
+		"deleted": result.RowsAffected,
+	})
 }

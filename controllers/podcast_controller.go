@@ -167,19 +167,14 @@ func GetPodcastByID(c *gin.Context) {
 			if result.Error == gorm.ErrRecordNotFound {
 				// Create new history
 				history = models.ListeningHistory{
-					ID:              uuid.New(),
-					UserID:          userID,
-					PodcastID:       podcastID,
-					LastPosition:    0,
-					Duration:        podcast.ThoiLuongGiay,
-					FirstListenedAt: now,
-					LastListenedAt:  now,
-					Completed:       false,
+					ID:        uuid.New(),
+					UserID:    userID,
+					PodcastID: podcastID,
 				}
 				db.Create(&history)
 			} else if result.Error == nil {
 				// Update last listened time
-				history.LastListenedAt = now
+				history.ListenedAt = now
 				db.Save(&history)
 			}
 		}
