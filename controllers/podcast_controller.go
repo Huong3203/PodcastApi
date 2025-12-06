@@ -16,7 +16,8 @@ import (
 	"gorm.io/gorm"
 )
 
-// ======================= Helper =======================
+// ======================= Helper Functions =======================
+
 func AttachSummary(db *gorm.DB, podcasts []models.Podcast) {
 	for i := range podcasts {
 		if podcasts[i].TailieuID != "" {
@@ -35,9 +36,39 @@ func FormatSecondsToHHMMSS(seconds int) string {
 	return fmt.Sprintf("%02d:%02d:%02d", h, m, s)
 }
 
+// ✅ Kiểm tra podcast có phải VIP không
+func CheckPodcastVIPStatus(podcast *models.Podcast) bool {
+	// Điều kiện 1: Podcast mới trong 7 ngày
+	if time.Since(podcast.NgayTaoRa) <= 7*24*time.Hour {
+		return true
+	}
+
+	// Điều kiện 2: Podcast có thời lượng > 3 phút (180 giây)
+	if podcast.ThoiLuongGiay > 180 {
+		return true
+	}
+
+	return false
+}
+
+// ✅ Kiểm tra user có VIP hợp lệ không
+func IsUserVIP(user *models.NguoiDung) bool {
+	if !user.VIP {
+		return false
+	}
+
+	// Nếu không có ngày hết hạn = VIP vĩnh viễn
+	if user.VIPExpires == nil {
+		return true
+	}
+
+	// Kiểm tra VIP còn hạn
+	return time.Now().Before(*user.VIPExpires)
+}
+
 // ======================= PUBLIC API =======================
 
-// Xem danh sách podcast
+// Xem danh sách podcast với VIP filter
 func GetPodcast(c *gin.Context) {
 	db := config.DB
 	var podcasts []models.Podcast
@@ -51,6 +82,7 @@ func GetPodcast(c *gin.Context) {
 	status := c.Query("status")
 	categoryID := c.Query("category")
 	sort := c.DefaultQuery("sort", "date")
+	vipFilter := c.Query("vip") // "true", "false", hoặc ""
 
 	query := db.Model(&models.Podcast{}).Preload("TaiLieu").Preload("DanhMuc")
 
@@ -86,6 +118,27 @@ func GetPodcast(c *gin.Context) {
 	query.Count(&total)
 	query.Order(orderBy).Offset(offset).Limit(limit).Find(&podcasts)
 
+	// ✅ Đánh dấu VIP và lọc nếu cần
+	filteredPodcasts := []models.Podcast{}
+	for i := range podcasts {
+		podcasts[i].IsVIP = CheckPodcastVIPStatus(&podcasts[i])
+
+		// Áp dụng filter VIP
+		if vipFilter == "true" && podcasts[i].IsVIP {
+			filteredPodcasts = append(filteredPodcasts, podcasts[i])
+		} else if vipFilter == "false" && !podcasts[i].IsVIP {
+			filteredPodcasts = append(filteredPodcasts, podcasts[i])
+		} else if vipFilter == "" {
+			filteredPodcasts = append(filteredPodcasts, podcasts[i])
+		}
+	}
+
+	// Nếu có filter VIP, cập nhật lại total
+	if vipFilter != "" {
+		podcasts = filteredPodcasts
+		total = int64(len(podcasts))
+	}
+
 	// Gán TomTat
 	AttachSummary(db, podcasts)
 
@@ -100,7 +153,7 @@ func GetPodcast(c *gin.Context) {
 	})
 }
 
-// Tìm kiếm podcast
+// Tìm kiếm podcast với VIP marking
 func SearchPodcast(c *gin.Context) {
 	db := config.DB
 	search := c.Query("q")
@@ -129,11 +182,16 @@ func SearchPodcast(c *gin.Context) {
 		return
 	}
 
+	// ✅ Đánh dấu VIP
+	for i := range podcasts {
+		podcasts[i].IsVIP = CheckPodcastVIPStatus(&podcasts[i])
+	}
+
 	AttachSummary(db, podcasts)
 	c.JSON(http.StatusOK, gin.H{"data": podcasts})
 }
 
-// Xem chi tiết podcast (WITH AUTO-SAVE LISTENING HISTORY)
+// ✅ Xem chi tiết podcast (WITH FULL VIP CHECK)
 func GetPodcastByID(c *gin.Context) {
 	db := config.DB
 	id := c.Param("id")
@@ -148,7 +206,64 @@ func GetPodcastByID(c *gin.Context) {
 		return
 	}
 
-	// Tăng lượt xem
+	// ✅ Kiểm tra trạng thái VIP của podcast
+	podcast.IsVIP = CheckPodcastVIPStatus(&podcast)
+
+	// ✅ Kiểm tra quyền truy cập nếu podcast yêu cầu VIP
+	if podcast.IsVIP {
+		userIDStr := c.GetString("user_id")
+
+		// Trường hợp 1: Chưa đăng nhập
+		if userIDStr == "" {
+			c.JSON(http.StatusForbidden, gin.H{
+				"error":           "VIP Required",
+				"message":         "Podcast này yêu cầu VIP. Vui lòng đăng nhập và nâng cấp tài khoản VIP để nghe.",
+				"is_vip_required": true,
+				"requires_login":  true,
+				"podcast_preview": gin.H{
+					"id":                podcast.ID,
+					"tieu_de":           podcast.TieuDe,
+					"mo_ta":             podcast.MoTa,
+					"hinh_anh_dai_dien": podcast.HinhAnhDaiDien,
+					"thoi_luong_giay":   podcast.ThoiLuongGiay,
+					"danh_muc":          podcast.DanhMuc,
+					"is_vip":            true,
+				},
+			})
+			return
+		}
+
+		// Trường hợp 2: Đã đăng nhập, kiểm tra VIP
+		var user models.NguoiDung
+		if err := db.First(&user, "id = ?", userIDStr).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể xác thực người dùng"})
+			return
+		}
+
+		// Trường hợp 3: Không có VIP hoặc VIP hết hạn
+		if !IsUserVIP(&user) {
+			vipExpired := user.VIP && user.VIPExpires != nil && time.Now().After(*user.VIPExpires)
+
+			c.JSON(http.StatusForbidden, gin.H{
+				"error":           "VIP Required",
+				"message":         "Podcast này chỉ dành cho thành viên VIP. Vui lòng nâng cấp tài khoản để tiếp tục.",
+				"is_vip_required": true,
+				"vip_expired":     vipExpired,
+				"podcast_preview": gin.H{
+					"id":                podcast.ID,
+					"tieu_de":           podcast.TieuDe,
+					"mo_ta":             podcast.MoTa,
+					"hinh_anh_dai_dien": podcast.HinhAnhDaiDien,
+					"thoi_luong_giay":   podcast.ThoiLuongGiay,
+					"danh_muc":          podcast.DanhMuc,
+					"is_vip":            true,
+				},
+			})
+			return
+		}
+	}
+
+	// ✅ Tăng lượt xem (chỉ khi có quyền truy cập)
 	db.Model(&podcast).UpdateColumn("luot_xem", gorm.Expr("luot_xem + ?", 1))
 
 	// ✅ AUTO-SAVE LISTENING HISTORY (if user is logged in)
@@ -161,11 +276,9 @@ func GetPodcastByID(c *gin.Context) {
 			var history models.ListeningHistory
 			now := time.Now()
 
-			// Check if history exists
 			result := db.Where("user_id = ? AND podcast_id = ?", userID, podcastID).First(&history)
 
 			if result.Error == gorm.ErrRecordNotFound {
-				// Create new history
 				history = models.ListeningHistory{
 					ID:        uuid.New(),
 					UserID:    userID,
@@ -173,7 +286,6 @@ func GetPodcastByID(c *gin.Context) {
 				}
 				db.Create(&history)
 			} else if result.Error == nil {
-				// Update last listened time
 				history.ListenedAt = now
 				db.Save(&history)
 			}
@@ -187,8 +299,14 @@ func GetPodcastByID(c *gin.Context) {
 
 	// Podcast liên quan
 	var related []models.Podcast
-	db.Preload("TaiLieu").Where("danh_muc_id = ? AND id != ?", podcast.DanhMucID, podcast.ID).
+	db.Preload("TaiLieu").Preload("DanhMuc").
+		Where("danh_muc_id = ? AND id != ?", podcast.DanhMucID, podcast.ID).
 		Order("ngay_tao_ra DESC").Limit(5).Find(&related)
+
+	// ✅ Đánh dấu VIP cho podcast liên quan
+	for i := range related {
+		related[i].IsVIP = CheckPodcastVIPStatus(&related[i])
+	}
 	AttachSummary(db, related)
 
 	c.JSON(http.StatusOK, gin.H{
@@ -202,12 +320,19 @@ func GetDisabledPodcasts(c *gin.Context) {
 	db := config.DB
 	var podcasts []models.Podcast
 
-	if err := db.Where("trang_thai = ?", "Tắt").Order("ngay_tao_ra DESC").Find(&podcasts).Error; err != nil {
+	if err := db.Where("trang_thai = ?", "Tắt").
+		Preload("TaiLieu").Preload("DanhMuc").
+		Order("ngay_tao_ra DESC").Find(&podcasts).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":  "Lỗi khi lấy danh sách podcast bị tắt",
 			"detail": err.Error(),
 		})
 		return
+	}
+
+	// ✅ Đánh dấu VIP
+	for i := range podcasts {
+		podcasts[i].IsVIP = CheckPodcastVIPStatus(&podcasts[i])
 	}
 
 	AttachSummary(db, podcasts)
@@ -313,6 +438,9 @@ func CreatePodcastWithUpload(c *gin.Context) {
 		return
 	}
 
+	// ✅ Đánh dấu VIP cho podcast mới tạo
+	podcast.IsVIP = CheckPodcastVIPStatus(&podcast)
+
 	message := fmt.Sprintf("Người dùng %s đã tạo podcast: %s", userID, tieuDe)
 	services.CreateNotification(userID, podcast.ID, "create_podcast", message)
 
@@ -352,15 +480,15 @@ func UpdatePodcast(c *gin.Context) {
 		podcast.TieuDe = tieuDe
 	}
 	if moTa != "" && moTa != podcast.MoTa {
-		changes = append(changes, fmt.Sprintf("mô tả"))
+		changes = append(changes, "mô tả")
 		podcast.MoTa = moTa
 	}
 	if theTag != "" && theTag != podcast.TheTag {
-		changes = append(changes, fmt.Sprintf("tag"))
+		changes = append(changes, "tag")
 		podcast.TheTag = theTag
 	}
 	if danhMucID != "" && danhMucID != podcast.DanhMucID {
-		changes = append(changes, fmt.Sprintf("danh mục"))
+		changes = append(changes, "danh mục")
 		podcast.DanhMucID = danhMucID
 	}
 	if trangThai != "" && trangThai != podcast.TrangThai {
@@ -393,6 +521,9 @@ func UpdatePodcast(c *gin.Context) {
 	}
 
 	db.Preload("TaiLieu").Preload("DanhMuc").First(&podcast, "id = ?", podcastID)
+
+	// ✅ Đánh dấu VIP
+	podcast.IsVIP = CheckPodcastVIPStatus(&podcast)
 	AttachSummary(db, []models.Podcast{podcast})
 
 	c.JSON(http.StatusOK, gin.H{
@@ -433,12 +564,13 @@ func GetRecommendedPodcasts(c *gin.Context) {
 		return
 	}
 
-	// Gán TomTat
+	// ✅ Đánh dấu VIP và gán TomTat
 	for i := range recommendations {
 		var tl models.TaiLieu
 		if err := db.First(&tl, "id = ?", recommendations[i].TailieuID).Error; err == nil {
 			recommendations[i].TomTat = tl.TomTat
 		}
+		recommendations[i].IsVIP = CheckPodcastVIPStatus(&recommendations[i].Podcast)
 	}
 
 	// fallback nếu không có cùng danh mục
@@ -451,11 +583,13 @@ func GetRecommendedPodcasts(c *gin.Context) {
 			Order("avg_rating DESC, total_votes DESC").
 			Limit(6).
 			Scan(&recommendations)
+
 		for i := range recommendations {
 			var tl models.TaiLieu
 			if err := db.First(&tl, "id = ?", recommendations[i].TailieuID).Error; err == nil {
 				recommendations[i].TomTat = tl.TomTat
 			}
+			recommendations[i].IsVIP = CheckPodcastVIPStatus(&recommendations[i].Podcast)
 		}
 	}
 

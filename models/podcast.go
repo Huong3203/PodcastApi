@@ -19,6 +19,7 @@ type Podcast struct {
 	NgayXuatBan    *time.Time `json:"ngay_xuat_ban"`
 	TheTag         string     `gorm:"type:varchar(255)" json:"the_tag"`
 	LuotXem        int        `gorm:"type:int;default:0" json:"luot_xem"`
+	IsVIP          bool       `gorm:"type:boolean;default:false" json:"is_vip"`
 
 	// 2 trường thống kê
 	LuotLuu      int `gorm:"type:int;default:0" json:"luot_luu"`

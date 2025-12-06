@@ -41,14 +41,17 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 	}
 
 	// ---------------- USER ----------------
-	user := api.Group("/users")
+	user := api.Group("/user")
 	user.Use(middleware.AuthMiddleware())
 	{
 		user.GET("/profile", controllers.GetProfile)
 		user.PUT("/profile", controllers.UpdateProfile)
 		user.POST("/change-password", controllers.ChangePassword)
 
-		// SAVED PODCASTS (nested under /users)
+		// ✅ VIP STATUS CHECK
+		user.GET("/vip-status", controllers.GetUserVIPStatus)
+
+		// SAVED PODCASTS (nested under /user)
 		saved := user.Group("/saved")
 		{
 			saved.POST("/:id/toggle", controllers.ToggleLuuPodcast)
@@ -143,7 +146,15 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 	{
 		publicPodcast.GET("/", controllers.GetPodcast)
 		publicPodcast.GET("/search", controllers.SearchPodcast)
+
+		// ✅ VIP PODCASTS - Public can see but can't access
+		publicPodcast.GET("/vip", controllers.GetVIPPodcasts)
+
 		publicPodcast.GET("/:id", controllers.GetPodcastByID)
+
+		// ✅ CHECK VIP REQUIREMENT - Before playing
+		publicPodcast.GET("/:id/check-vip", controllers.CheckPodcastVIPRequirement)
+
 		publicPodcast.GET("/disabled", controllers.GetDisabledPodcasts)
 		publicPodcast.GET("/:id/ratings", controllers.GetPodcastRatings)
 		publicPodcast.GET("/featured", controllers.GetFeaturedPodcasts)
