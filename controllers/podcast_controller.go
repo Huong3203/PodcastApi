@@ -17,6 +17,23 @@ import (
 )
 
 // ======================= Helper Functions =======================
+// ✅ Helper: Tính toán và UPDATE trạng thái VIP vào database
+func UpdatePodcastVIPStatus(db *gorm.DB, podcast *models.Podcast) {
+	shouldBeVIP := CheckPodcastVIPStatus(podcast)
+
+	// Chỉ update nếu trạng thái thay đổi
+	if podcast.IsVIP != shouldBeVIP {
+		db.Model(podcast).Update("is_vip", shouldBeVIP)
+		podcast.IsVIP = shouldBeVIP
+	}
+}
+
+// ✅ Helper: Batch update VIP status cho nhiều podcasts
+func BatchUpdateVIPStatus(db *gorm.DB, podcasts []models.Podcast) {
+	for i := range podcasts {
+		UpdatePodcastVIPStatus(db, &podcasts[i])
+	}
+}
 
 func AttachSummary(db *gorm.DB, podcasts []models.Podcast) {
 	for i := range podcasts {
@@ -69,6 +86,7 @@ func IsUserVIP(user *models.NguoiDung) bool {
 // ======================= PUBLIC API =======================
 
 // Xem danh sách podcast với VIP filter
+// ✅ Modified GetPodcast - Tự động sync VIP status
 func GetPodcast(c *gin.Context) {
 	db := config.DB
 	var podcasts []models.Podcast
@@ -86,7 +104,6 @@ func GetPodcast(c *gin.Context) {
 
 	query := db.Model(&models.Podcast{}).Preload("TaiLieu").Preload("DanhMuc")
 
-	// Nếu không phải admin → chỉ lấy podcast có trạng thái "Bật"
 	role, _ := c.Get("vai_tro")
 	if role != "admin" {
 		query = query.Where("trang_thai = ?", "Bật")
@@ -109,7 +126,13 @@ func GetPodcast(c *gin.Context) {
 		}
 	}
 
-	// Sắp xếp
+	// ✅ Filter VIP từ database
+	if vipFilter == "true" {
+		query = query.Where("is_vip = ?", true)
+	} else if vipFilter == "false" {
+		query = query.Where("is_vip = ?", false)
+	}
+
 	orderBy := "ngay_tao_ra DESC"
 	if sort == "views" {
 		orderBy = "luot_xem DESC"
@@ -118,28 +141,9 @@ func GetPodcast(c *gin.Context) {
 	query.Count(&total)
 	query.Order(orderBy).Offset(offset).Limit(limit).Find(&podcasts)
 
-	// ✅ Đánh dấu VIP và lọc nếu cần
-	filteredPodcasts := []models.Podcast{}
-	for i := range podcasts {
-		podcasts[i].IsVIP = CheckPodcastVIPStatus(&podcasts[i])
+	// ✅ Tự động sync VIP status (chạy background)
+	go BatchUpdateVIPStatus(db, podcasts)
 
-		// Áp dụng filter VIP
-		if vipFilter == "true" && podcasts[i].IsVIP {
-			filteredPodcasts = append(filteredPodcasts, podcasts[i])
-		} else if vipFilter == "false" && !podcasts[i].IsVIP {
-			filteredPodcasts = append(filteredPodcasts, podcasts[i])
-		} else if vipFilter == "" {
-			filteredPodcasts = append(filteredPodcasts, podcasts[i])
-		}
-	}
-
-	// Nếu có filter VIP, cập nhật lại total
-	if vipFilter != "" {
-		podcasts = filteredPodcasts
-		total = int64(len(podcasts))
-	}
-
-	// Gán TomTat
 	AttachSummary(db, podcasts)
 
 	c.JSON(http.StatusOK, gin.H{
@@ -206,14 +210,13 @@ func GetPodcastByID(c *gin.Context) {
 		return
 	}
 
-	// ✅ Kiểm tra trạng thái VIP của podcast
-	podcast.IsVIP = CheckPodcastVIPStatus(&podcast)
+	// ✅ Sync VIP status (nếu cần)
+	UpdatePodcastVIPStatus(db, &podcast)
 
 	// ✅ Kiểm tra quyền truy cập nếu podcast yêu cầu VIP
 	if podcast.IsVIP {
 		userIDStr := c.GetString("user_id")
 
-		// Trường hợp 1: Chưa đăng nhập
 		if userIDStr == "" {
 			c.JSON(http.StatusForbidden, gin.H{
 				"error":           "VIP Required",
@@ -233,14 +236,12 @@ func GetPodcastByID(c *gin.Context) {
 			return
 		}
 
-		// Trường hợp 2: Đã đăng nhập, kiểm tra VIP
 		var user models.NguoiDung
 		if err := db.First(&user, "id = ?", userIDStr).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể xác thực người dùng"})
 			return
 		}
 
-		// Trường hợp 3: Không có VIP hoặc VIP hết hạn
 		if !IsUserVIP(&user) {
 			vipExpired := user.VIP && user.VIPExpires != nil && time.Now().After(*user.VIPExpires)
 
@@ -263,10 +264,9 @@ func GetPodcastByID(c *gin.Context) {
 		}
 	}
 
-	// ✅ Tăng lượt xem (chỉ khi có quyền truy cập)
 	db.Model(&podcast).UpdateColumn("luot_xem", gorm.Expr("luot_xem + ?", 1))
 
-	// ✅ AUTO-SAVE LISTENING HISTORY (if user is logged in)
+	// AUTO-SAVE LISTENING HISTORY
 	userIDStr := c.GetString("user_id")
 	if userIDStr != "" {
 		userID, err := uuid.Parse(userIDStr)
@@ -292,21 +292,17 @@ func GetPodcastByID(c *gin.Context) {
 		}
 	}
 
-	// Gán TomTat
 	if podcast.TailieuID != "" {
 		podcast.TomTat = podcast.TaiLieu.TomTat
 	}
 
-	// Podcast liên quan
 	var related []models.Podcast
 	db.Preload("TaiLieu").Preload("DanhMuc").
 		Where("danh_muc_id = ? AND id != ?", podcast.DanhMucID, podcast.ID).
 		Order("ngay_tao_ra DESC").Limit(5).Find(&related)
 
-	// ✅ Đánh dấu VIP cho podcast liên quan
-	for i := range related {
-		related[i].IsVIP = CheckPodcastVIPStatus(&related[i])
-	}
+	// Sync VIP cho related
+	go BatchUpdateVIPStatus(db, related)
 	AttachSummary(db, related)
 
 	c.JSON(http.StatusOK, gin.H{
@@ -418,6 +414,14 @@ func CreatePodcastWithUpload(c *gin.Context) {
 	durationFloat, _ := services.GetMP3DurationFromURL(audioURL)
 	totalSeconds := int(durationFloat)
 
+	// ✅ Tính toán VIP status ngay khi tạo
+	isVIP := false
+	if totalSeconds > 180 {
+		isVIP = true // Podcast dài > 3 phút
+	}
+	// Podcast mới luôn là VIP (trong 7 ngày)
+	isVIP = true
+
 	podcast := models.Podcast{
 		ID:             uuid.New().String(),
 		TailieuID:      taiLieuID,
@@ -431,15 +435,13 @@ func CreatePodcastWithUpload(c *gin.Context) {
 		NguoiTao:       userID,
 		TheTag:         theTag,
 		LuotXem:        0,
+		IsVIP:          isVIP, // ✅ Set VIP status
 	}
 
 	if err := db.Create(&podcast).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể tạo podcast", "details": err.Error()})
 		return
 	}
-
-	// ✅ Đánh dấu VIP cho podcast mới tạo
-	podcast.IsVIP = CheckPodcastVIPStatus(&podcast)
 
 	message := fmt.Sprintf("Người dùng %s đã tạo podcast: %s", userID, tieuDe)
 	services.CreateNotification(userID, podcast.ID, "create_podcast", message)
@@ -473,6 +475,9 @@ func UpdatePodcast(c *gin.Context) {
 	danhMucID := c.PostForm("danh_muc_id")
 	trangThai := c.PostForm("trang_thai")
 
+	// ✅ Admin có thể sửa VIP status
+	vipStatus := c.PostForm("is_vip") // "true" hoặc "false"
+
 	changes := []string{}
 
 	if tieuDe != "" && tieuDe != podcast.TieuDe {
@@ -500,6 +505,15 @@ func UpdatePodcast(c *gin.Context) {
 		}
 	}
 
+	// ✅ Xử lý VIP status
+	if vipStatus != "" {
+		newVIP := vipStatus == "true"
+		if newVIP != podcast.IsVIP {
+			changes = append(changes, fmt.Sprintf("VIP: %v → %v", podcast.IsVIP, newVIP))
+			podcast.IsVIP = newVIP
+		}
+	}
+
 	if hinhAnhFile, err := c.FormFile("hinh_anh_dai_dien"); err == nil {
 		if imageURL, err := utils.UploadImageToSupabase(hinhAnhFile, uuid.New().String()); err == nil {
 			podcast.HinhAnhDaiDien = imageURL
@@ -521,9 +535,6 @@ func UpdatePodcast(c *gin.Context) {
 	}
 
 	db.Preload("TaiLieu").Preload("DanhMuc").First(&podcast, "id = ?", podcastID)
-
-	// ✅ Đánh dấu VIP
-	podcast.IsVIP = CheckPodcastVIPStatus(&podcast)
 	AttachSummary(db, []models.Podcast{podcast})
 
 	c.JSON(http.StatusOK, gin.H{
@@ -594,4 +605,73 @@ func GetRecommendedPodcasts(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"data": recommendations})
+}
+
+// ✅ NEW: Admin toggle VIP status
+func TogglePodcastVIPStatus(c *gin.Context) {
+	role, _ := c.Get("vai_tro")
+	if role != "admin" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Chỉ admin mới có quyền thay đổi trạng thái VIP"})
+		return
+	}
+
+	db := c.MustGet("db").(*gorm.DB)
+	podcastID := c.Param("id")
+
+	var podcast models.Podcast
+	if err := db.First(&podcast, "id = ?", podcastID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Podcast không tồn tại"})
+		return
+	}
+
+	// Toggle VIP status
+	newVIPStatus := !podcast.IsVIP
+	if err := db.Model(&podcast).Update("is_vip", newVIPStatus).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể cập nhật trạng thái VIP"})
+		return
+	}
+
+	podcast.IsVIP = newVIPStatus
+
+	message := fmt.Sprintf("Admin đã thay đổi trạng thái VIP của podcast '%s' thành: %v", podcast.TieuDe, newVIPStatus)
+	services.CreateNotification("", podcast.ID, "update_vip", message)
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": fmt.Sprintf("Đã %s trạng thái VIP", map[bool]string{true: "bật", false: "tắt"}[newVIPStatus]),
+		"podcast": podcast,
+	})
+}
+
+// ✅ NEW: Sync tất cả VIP status (Admin only - chạy manual)
+func SyncAllVIPStatus(c *gin.Context) {
+	role, _ := c.Get("vai_tro")
+	if role != "admin" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Chỉ admin mới có quyền sync VIP"})
+		return
+	}
+
+	db := c.MustGet("db").(*gorm.DB)
+
+	var podcasts []models.Podcast
+	if err := db.Find(&podcasts).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể lấy danh sách podcast"})
+		return
+	}
+
+	updated := 0
+	for i := range podcasts {
+		oldStatus := podcasts[i].IsVIP
+		shouldBeVIP := CheckPodcastVIPStatus(&podcasts[i])
+
+		if oldStatus != shouldBeVIP {
+			db.Model(&podcasts[i]).Update("is_vip", shouldBeVIP)
+			updated++
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":        "Đã đồng bộ trạng thái VIP",
+		"total_podcasts": len(podcasts),
+		"updated":        updated,
+	})
 }

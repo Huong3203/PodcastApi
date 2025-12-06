@@ -106,6 +106,10 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 		admin.POST("/podcasts", controllers.CreatePodcastWithUpload)
 		admin.PUT("/podcasts/:id", controllers.UpdatePodcast)
 
+		// ✅ VIP Management
+		admin.PATCH("/podcasts/:id/toggle-vip", controllers.TogglePodcastVIPStatus)
+		admin.POST("/podcasts/sync-vip", controllers.SyncAllVIPStatus)
+
 		admin.GET("/stats", controllers.GetAdminStats)
 		admin.GET("/ratings/stats", controllers.GetAdminRatingsStats)
 
