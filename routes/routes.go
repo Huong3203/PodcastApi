@@ -47,11 +47,8 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 		user.GET("/profile", controllers.GetProfile)
 		user.PUT("/profile", controllers.UpdateProfile)
 		user.POST("/change-password", controllers.ChangePassword)
-
-		// ✅ VIP STATUS CHECK
 		user.GET("/vip-status", controllers.GetUserVIPStatus)
 
-		// SAVED PODCASTS (nested under /user)
 		saved := user.Group("/saved")
 		{
 			saved.POST("/:id/toggle", controllers.ToggleLuuPodcast)
@@ -99,25 +96,18 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 	{
 		admin.GET("/vip-payments", controllers.GetAllVIPPayments(db))
 		admin.GET("/vip-users", controllers.GetVIPUsers(db))
-
 		admin.POST("/documents/upload", controllers.UploadDocument)
 		admin.GET("/documents", controllers.ListDocumentStatus)
-
 		admin.POST("/podcasts", controllers.CreatePodcastWithUpload)
 		admin.PUT("/podcasts/:id", controllers.UpdatePodcast)
-
-		// ✅ VIP Management
 		admin.PATCH("/podcasts/:id/toggle-vip", controllers.TogglePodcastVIPStatus)
 		admin.POST("/podcasts/sync-vip", controllers.SyncAllVIPStatus)
-
 		admin.GET("/stats", controllers.GetAdminStats)
 		admin.GET("/ratings/stats", controllers.GetAdminRatingsStats)
-
 		admin.GET("/users", controllers.GetAllUsers)
 		admin.PATCH("/users/:id/role", controllers.UpdateUserRole)
 		admin.PATCH("/users/:id/toggle-active", controllers.ToggleUserActivation)
 
-		// ADMIN NOTIFICATIONS
 		adminNotif := admin.Group("/notifications")
 		{
 			adminNotif.GET("", controllers.GetAdminNotifications)
@@ -146,23 +136,24 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 	}
 
 	// ---------------- PODCAST ----------------
+	// ✅✅✅ CRITICAL: Specific routes MUST come BEFORE :id patterns
 	publicPodcast := api.Group("/podcasts")
 	{
+		// Routes without :id parameter (safe to put anywhere)
 		publicPodcast.GET("/", controllers.GetPodcast)
 		publicPodcast.GET("/search", controllers.SearchPodcast)
-
-		// ✅ VIP PODCASTS - Public can see but can't access
 		publicPodcast.GET("/vip", controllers.GetVIPPodcasts)
-
-		publicPodcast.GET("/:id", controllers.GetPodcastByID)
-
-		// ✅ CHECK VIP REQUIREMENT - Before playing
-		publicPodcast.GET("/:id/check-vip", controllers.CheckPodcastVIPRequirement)
-
 		publicPodcast.GET("/disabled", controllers.GetDisabledPodcasts)
-		publicPodcast.GET("/:id/ratings", controllers.GetPodcastRatings)
 		publicPodcast.GET("/featured", controllers.GetFeaturedPodcasts)
+
+		// ✅✅✅ Specific :id routes MUST come BEFORE generic /:id
+		// OptionalAuthMiddleware: parse token if present, but don't block
+		publicPodcast.GET("/:id/check-vip", middleware.OptionalAuthMiddleware(), controllers.CheckPodcastVIPRequirement)
+		publicPodcast.GET("/:id/ratings", controllers.GetPodcastRatings)
 		publicPodcast.GET("/:id/recommendations", controllers.GetRecommendedPodcasts)
+
+		// ✅ Generic :id route MUST be LAST
+		publicPodcast.GET("/:id", middleware.OptionalAuthMiddleware(), controllers.GetPodcastByID)
 	}
 
 	// ---------------- AUTH REQUIRED PODCAST ----------------
@@ -180,11 +171,9 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 	// ---------------- WebSockets ----------------
 	r.GET("/ws/document/:id", ws.HandleDocumentWebSocket)
 	r.GET("/ws/status", ws.HandleGlobalWebSocket)
-
 	r.GET("/ws/notifications", func(c *gin.Context) {
 		ws.HandleNotificationWS(c.Writer, c.Request)
 	})
-
 	r.GET("/ws/badge", func(c *gin.Context) {
 		ws.HandleBadgeWS(c.Writer, c.Request)
 	})
@@ -192,3 +181,198 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 	go ws.HandleNotificationMessages()
 	go ws.HandleBadgeMessages()
 }
+
+// package routes
+
+// import (
+// 	"github.com/Huong3203/APIPodcast/controllers"
+// 	"github.com/Huong3203/APIPodcast/middleware"
+// 	"github.com/Huong3203/APIPodcast/ws"
+// 	"github.com/gin-gonic/gin"
+// 	"gorm.io/gorm"
+// )
+
+// func SetupRoutes(r *gin.Engine, db *gorm.DB) {
+
+// 	r.GET("/ping", func(c *gin.Context) {
+// 		c.JSON(200, gin.H{"message": "pong"})
+// 	})
+
+// 	api := r.Group("/api")
+
+// 	// ---------------- AUTH ----------------
+// 	auth := api.Group("/auth")
+// 	{
+// 		auth.POST("/register", controllers.Register)
+// 		auth.POST("/login", controllers.Login)
+// 		auth.POST("/google/clerk", controllers.ClerkLogin)
+// 	}
+
+// 	// ---------------- PAYMENT (MoMo VIP) ----------------
+// 	payment := api.Group("/payment")
+// 	{
+// 		payment.GET("/packages", controllers.GetVIPPackages)
+// 		payment.GET("/momo/callback", controllers.MoMoCallback)
+// 		payment.POST("/momo/ipn", controllers.MoMoIPN)
+// 		payment.GET("/status", controllers.CheckPaymentStatus)
+
+// 		paymentProtected := payment.Group("/")
+// 		paymentProtected.Use(middleware.AuthMiddleware())
+// 		{
+// 			paymentProtected.POST("/momo/create", controllers.CreateMoMoPayment)
+// 			paymentProtected.GET("/history", controllers.GetPaymentHistory)
+// 		}
+// 	}
+
+// 	// ---------------- USER ----------------
+// 	user := api.Group("/users")
+// 	user.Use(middleware.AuthMiddleware())
+// 	{
+// 		user.GET("/profile", controllers.GetProfile)
+// 		user.PUT("/profile", controllers.UpdateProfile)
+// 		user.POST("/change-password", controllers.ChangePassword)
+
+// 		// ✅ VIP STATUS CHECK
+// 		user.GET("/vip-status", controllers.GetUserVIPStatus)
+
+// 		// SAVED PODCASTS (nested under /user)
+// 		saved := user.Group("/saved")
+// 		{
+// 			saved.POST("/:id/toggle", controllers.ToggleLuuPodcast)
+// 			saved.GET("", controllers.GetMySavedPodcasts)
+// 		}
+// 	}
+
+// 	// ============ USER LISTENING HISTORY ============
+// 	userHistory := api.Group("/user/listening-history")
+// 	userHistory.Use(middleware.AuthMiddleware(), middleware.DBMiddleware(db))
+// 	{
+// 		userHistory.POST("/:podcast_id", controllers.SavePodcastHistory)
+// 		userHistory.GET("", controllers.GetListeningHistory)
+// 		userHistory.GET("/:podcast_id", controllers.GetPodcastHistory)
+// 		userHistory.DELETE("/:podcast_id", controllers.DeletePodcastHistory)
+// 		userHistory.DELETE("", controllers.ClearAllHistory)
+// 	}
+
+// 	// ============ USER FAVORITES ============
+// 	userFavorites := api.Group("/user/favorites")
+// 	userFavorites.Use(middleware.AuthMiddleware(), middleware.DBMiddleware(db))
+// 	{
+// 		userFavorites.POST("/:podcast_id", controllers.AddFavorite)
+// 		userFavorites.DELETE("/:podcast_id", controllers.RemoveFavorite)
+// 		userFavorites.GET("/:podcast_id/check", controllers.CheckFavorite)
+// 		userFavorites.GET("", controllers.GetFavorites)
+// 	}
+
+// 	// ============ USER NOTIFICATIONS ============
+// 	userNotifications := api.Group("/user/notifications")
+// 	userNotifications.Use(middleware.AuthMiddleware(), middleware.DBMiddleware(db))
+// 	{
+// 		userNotifications.GET("", controllers.GetNotifications)
+// 		userNotifications.GET("/unread-count", controllers.GetUnreadCount)
+// 		userNotifications.PUT("/:id/read", controllers.MarkNotificationAsRead)
+// 		userNotifications.PUT("/read-all", controllers.MarkAllAsRead)
+// 		userNotifications.DELETE("/:id", controllers.DeleteNotification)
+// 		userNotifications.DELETE("", controllers.DeleteAllNotifications)
+// 		userNotifications.DELETE("/read", controllers.DeleteReadNotifications)
+// 	}
+
+// 	// ---------------- ADMIN ----------------
+// 	admin := api.Group("/admin")
+// 	admin.Use(middleware.AuthMiddleware(), middleware.DBMiddleware(db))
+// 	{
+// 		admin.GET("/vip-payments", controllers.GetAllVIPPayments(db))
+// 		admin.GET("/vip-users", controllers.GetVIPUsers(db))
+
+// 		admin.POST("/documents/upload", controllers.UploadDocument)
+// 		admin.GET("/documents", controllers.ListDocumentStatus)
+
+// 		admin.POST("/podcasts", controllers.CreatePodcastWithUpload)
+// 		admin.PUT("/podcasts/:id", controllers.UpdatePodcast)
+
+// 		// ✅ VIP Management
+// 		admin.PATCH("/podcasts/:id/toggle-vip", controllers.TogglePodcastVIPStatus)
+// 		admin.POST("/podcasts/sync-vip", controllers.SyncAllVIPStatus)
+
+// 		admin.GET("/stats", controllers.GetAdminStats)
+// 		admin.GET("/ratings/stats", controllers.GetAdminRatingsStats)
+
+// 		admin.GET("/users", controllers.GetAllUsers)
+// 		admin.PATCH("/users/:id/role", controllers.UpdateUserRole)
+// 		admin.PATCH("/users/:id/toggle-active", controllers.ToggleUserActivation)
+
+// 		// ADMIN NOTIFICATIONS
+// 		adminNotif := admin.Group("/notifications")
+// 		{
+// 			adminNotif.GET("", controllers.GetAdminNotifications)
+// 			adminNotif.GET("/unread-count", controllers.GetAdminUnreadCount)
+// 			adminNotif.PUT("/:id/read", controllers.MarkAdminNotificationAsRead)
+// 			adminNotif.PUT("/read-all", controllers.MarkAllAdminAsRead)
+// 			adminNotif.DELETE("/:id", controllers.DeleteAdminNotification)
+// 			adminNotif.DELETE("", controllers.DeleteAllAdminNotifications)
+// 			adminNotif.DELETE("/read", controllers.DeleteReadAdminNotifications)
+// 		}
+// 	}
+
+// 	// ---------------- CATEGORY ----------------
+// 	category := api.Group("/categories")
+// 	{
+// 		category.GET("/", controllers.GetDanhMucs)
+// 		category.GET("/:id", controllers.GetDanhMucByID)
+
+// 		adminCategory := category.Group("/")
+// 		adminCategory.Use(middleware.AuthMiddleware())
+// 		{
+// 			adminCategory.POST("/", controllers.CreateDanhMuc)
+// 			adminCategory.PUT("/:id", controllers.UpdateDanhMuc)
+// 			adminCategory.PATCH("/:id/status", controllers.ToggleDanhMucStatus)
+// 		}
+// 	}
+
+// 	// ---------------- PODCAST ----------------
+// 	publicPodcast := api.Group("/podcasts")
+// 	{
+// 		publicPodcast.GET("/", controllers.GetPodcast)
+// 		publicPodcast.GET("/search", controllers.SearchPodcast)
+
+// 		// ✅ VIP PODCASTS - Public can see but can't access
+// 		publicPodcast.GET("/vip", controllers.GetVIPPodcasts)
+
+// 		publicPodcast.GET("/:id", controllers.GetPodcastByID)
+
+// 		// ✅ CHECK VIP REQUIREMENT - Before playing
+// 		publicPodcast.GET("/:id/check-vip", controllers.CheckPodcastVIPRequirement)
+
+// 		publicPodcast.GET("/disabled", controllers.GetDisabledPodcasts)
+// 		publicPodcast.GET("/:id/ratings", controllers.GetPodcastRatings)
+// 		publicPodcast.GET("/featured", controllers.GetFeaturedPodcasts)
+// 		publicPodcast.GET("/:id/recommendations", controllers.GetRecommendedPodcasts)
+// 	}
+
+// 	// ---------------- AUTH REQUIRED PODCAST ----------------
+// 	protectedPodcast := api.Group("/podcasts")
+// 	protectedPodcast.Use(middleware.AuthMiddleware())
+// 	{
+// 		protectedPodcast.POST("/", controllers.CreatePodcastWithUpload)
+// 		protectedPodcast.PUT("/:id", controllers.UpdatePodcast)
+// 		protectedPodcast.POST("/:id/ratings", controllers.AddPodcastRating)
+// 	}
+
+// 	// ---------------- OTHER ----------------
+// 	r.GET("/health", controllers.HealthCheck)
+
+// 	// ---------------- WebSockets ----------------
+// 	r.GET("/ws/document/:id", ws.HandleDocumentWebSocket)
+// 	r.GET("/ws/status", ws.HandleGlobalWebSocket)
+
+// 	r.GET("/ws/notifications", func(c *gin.Context) {
+// 		ws.HandleNotificationWS(c.Writer, c.Request)
+// 	})
+
+// 	r.GET("/ws/badge", func(c *gin.Context) {
+// 		ws.HandleBadgeWS(c.Writer, c.Request)
+// 	})
+
+// 	go ws.HandleNotificationMessages()
+// 	go ws.HandleBadgeMessages()
+// }
