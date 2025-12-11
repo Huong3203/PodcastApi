@@ -35,14 +35,33 @@ func FormatSecondsToHHMMSS(seconds int) string {
 	return fmt.Sprintf("%02d:%02d:%02d", h, m, s)
 }
 
+// ✅ Kiểm tra podcast có phải VIP không
+func CheckPodcastVIPStatus(podcast *models.Podcast) bool {
+	// Điều kiện 1: Podcast mới trong 7 ngày
+	if time.Since(podcast.NgayTaoRa) <= 7*24*time.Hour {
+		return true
+	}
+
+	// Điều kiện 2: Podcast có thời lượng > 3 phút (180 giây)
+	if podcast.ThoiLuongGiay > 180 {
+		return true
+	}
+
+	return false
+}
+
 // ✅ Kiểm tra user có VIP hợp lệ không
 func IsUserVIP(user *models.NguoiDung) bool {
 	if !user.VIP {
 		return false
 	}
+
+	// Nếu không có ngày hết hạn = VIP vĩnh viễn
 	if user.VIPExpires == nil {
 		return true
 	}
+
+	// Kiểm tra VIP còn hạn
 	return time.Now().Before(*user.VIPExpires)
 }
 
@@ -141,7 +160,7 @@ func SearchPodcast(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": podcasts})
 }
 
-// ✅ Xem chi tiết podcast (KHÔNG kiểm tra VIP cho admin)
+// ✅ Xem chi tiết podcast (ADMIN BYPASS VIP CHECK)
 func GetPodcastByID(c *gin.Context) {
 	db := config.DB
 	id := c.Param("id")
@@ -160,53 +179,58 @@ func GetPodcastByID(c *gin.Context) {
 	role, _ := c.Get("vai_tro")
 
 	// ✅ CHỈ kiểm tra VIP nếu KHÔNG phải admin
-	if role != "admin" && podcast.IsVIP {
-		userIDStr := c.GetString("user_id")
+	if role != "admin" {
+		// Kiểm tra xem podcast có yêu cầu VIP không
+		isVIP := CheckPodcastVIPStatus(&podcast)
 
-		if userIDStr == "" {
-			c.JSON(http.StatusForbidden, gin.H{
-				"error":           "VIP Required",
-				"message":         "Podcast này yêu cầu VIP. Vui lòng đăng nhập và nâng cấp tài khoản VIP để nghe.",
-				"is_vip_required": true,
-				"requires_login":  true,
-				"podcast_preview": gin.H{
-					"id":                podcast.ID,
-					"tieu_de":           podcast.TieuDe,
-					"mo_ta":             podcast.MoTa,
-					"hinh_anh_dai_dien": podcast.HinhAnhDaiDien,
-					"thoi_luong_giay":   podcast.ThoiLuongGiay,
-					"danh_muc":          podcast.DanhMuc,
-					"is_vip":            true,
-				},
-			})
-			return
-		}
+		if isVIP {
+			userIDStr := c.GetString("user_id")
 
-		var user models.NguoiDung
-		if err := db.First(&user, "id = ?", userIDStr).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể xác thực người dùng"})
-			return
-		}
+			if userIDStr == "" {
+				c.JSON(http.StatusForbidden, gin.H{
+					"error":           "VIP Required",
+					"message":         "Podcast này yêu cầu VIP. Vui lòng đăng nhập và nâng cấp tài khoản VIP để nghe.",
+					"is_vip_required": true,
+					"requires_login":  true,
+					"podcast_preview": gin.H{
+						"id":                podcast.ID,
+						"tieu_de":           podcast.TieuDe,
+						"mo_ta":             podcast.MoTa,
+						"hinh_anh_dai_dien": podcast.HinhAnhDaiDien,
+						"thoi_luong_giay":   podcast.ThoiLuongGiay,
+						"danh_muc":          podcast.DanhMuc,
+						"is_vip":            true,
+					},
+				})
+				return
+			}
 
-		if !IsUserVIP(&user) {
-			vipExpired := user.VIP && user.VIPExpires != nil && time.Now().After(*user.VIPExpires)
+			var user models.NguoiDung
+			if err := db.First(&user, "id = ?", userIDStr).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể xác thực người dùng"})
+				return
+			}
 
-			c.JSON(http.StatusForbidden, gin.H{
-				"error":           "VIP Required",
-				"message":         "Podcast này chỉ dành cho thành viên VIP. Vui lòng nâng cấp tài khoản để tiếp tục.",
-				"is_vip_required": true,
-				"vip_expired":     vipExpired,
-				"podcast_preview": gin.H{
-					"id":                podcast.ID,
-					"tieu_de":           podcast.TieuDe,
-					"mo_ta":             podcast.MoTa,
-					"hinh_anh_dai_dien": podcast.HinhAnhDaiDien,
-					"thoi_luong_giay":   podcast.ThoiLuongGiay,
-					"danh_muc":          podcast.DanhMuc,
-					"is_vip":            true,
-				},
-			})
-			return
+			if !IsUserVIP(&user) {
+				vipExpired := user.VIP && user.VIPExpires != nil && time.Now().After(*user.VIPExpires)
+
+				c.JSON(http.StatusForbidden, gin.H{
+					"error":           "VIP Required",
+					"message":         "Podcast này chỉ dành cho thành viên VIP. Vui lòng nâng cấp tài khoản để tiếp tục.",
+					"is_vip_required": true,
+					"vip_expired":     vipExpired,
+					"podcast_preview": gin.H{
+						"id":                podcast.ID,
+						"tieu_de":           podcast.TieuDe,
+						"mo_ta":             podcast.MoTa,
+						"hinh_anh_dai_dien": podcast.HinhAnhDaiDien,
+						"thoi_luong_giay":   podcast.ThoiLuongGiay,
+						"danh_muc":          podcast.DanhMuc,
+						"is_vip":            true,
+					},
+				})
+				return
+			}
 		}
 	}
 
@@ -280,7 +304,7 @@ func GetDisabledPodcasts(c *gin.Context) {
 	})
 }
 
-// ✅ Tạo podcast với upload (ADMIN không bị ràng buộc VIP)
+// ✅ Tạo podcast với upload (Admin không bị ràng buộc VIP)
 func CreatePodcastWithUpload(c *gin.Context) {
 	role, _ := c.Get("vai_tro")
 	if role == nil {
@@ -384,7 +408,7 @@ func CreatePodcastWithUpload(c *gin.Context) {
 	})
 }
 
-// Cập nhật podcast (Admin)
+// ✅ Cập nhật podcast (Admin)
 func UpdatePodcast(c *gin.Context) {
 	role, _ := c.Get("vai_tro")
 	if role != "admin" {
