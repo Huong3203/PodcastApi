@@ -1030,8 +1030,13 @@ func CreatePodcastWithUpload(c *gin.Context) {
 		return
 	}
 
-	db := c.MustGet("db").(*gorm.DB)
+	db := config.DB // ✅ Sử dụng config.DB thay vì MustGet
 	userID := c.GetString("user_id")
+
+	if userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Không thể xác định user"})
+		return
+	}
 
 	file, err := c.FormFile("file")
 	if err != nil {
