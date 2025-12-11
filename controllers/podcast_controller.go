@@ -762,7 +762,132 @@ func IsUserVIP(user *models.NguoiDung) bool {
 
 // ======================= PUBLIC API =======================
 
-// Xem danh sách podcast với VIP filter
+// ✅ Tạo podcast - CHỈ ADMIN
+func CreatePodcastWithUpload(c *gin.Context) {
+	// ✅ FIX: Kiểm tra role đúng cách
+	role, exists := c.Get("vai_tro")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Bạn phải đăng nhập"})
+		return
+	}
+
+	// ✅ Chỉ admin mới được tạo podcast
+	if role != "admin" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Chỉ admin mới có quyền tạo podcast"})
+		return
+	}
+
+	// ✅ FIX: Lấy db từ middleware
+	db := c.MustGet("db").(*gorm.DB)
+	userID := c.GetString("user_id")
+
+	if userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Không thể xác định user"})
+		return
+	}
+
+	file, err := c.FormFile("file")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Không có file đính kèm"})
+		return
+	}
+
+	tieuDe := c.PostForm("tieu_de")
+	danhMucID := c.PostForm("danh_muc_id")
+	if tieuDe == "" || danhMucID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Thiếu tiêu đề hoặc danh mục"})
+		return
+	}
+
+	moTa := c.PostForm("mo_ta")
+	hinhAnh := ""
+	if hinhAnhFile, err := c.FormFile("hinh_anh_dai_dien"); err == nil {
+		imageURL, err := utils.UploadImageToSupabase(hinhAnhFile, uuid.New().String())
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể upload hình ảnh", "details": err.Error()})
+			return
+		}
+		hinhAnh = imageURL
+	}
+
+	theTag := c.PostForm("the_tag")
+	voice := c.DefaultPostForm("voice", "vi-VN-Chirp3-HD-Puck")
+	speakingRateStr := c.DefaultPostForm("speaking_rate", "1.0")
+	rateValue, _ := strconv.ParseFloat(speakingRateStr, 64)
+	if rateValue <= 0 {
+		rateValue = 1.0
+	}
+
+	authHeader := c.GetHeader("Authorization")
+	parts := strings.Split(authHeader, " ")
+	if len(parts) != 2 || parts[0] != "Bearer" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization header không hợp lệ"})
+		return
+	}
+	token := parts[1]
+
+	respData, err := services.CallUploadDocumentAPI(file, userID, token, voice, rateValue)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi khi gọi UploadDocument", "details": err.Error()})
+		return
+	}
+
+	taiLieuRaw, ok := respData["tai_lieu"]
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể lấy dữ liệu tài liệu từ UploadDocument"})
+		return
+	}
+
+	taiLieuMap, ok := taiLieuRaw.(map[string]interface{})
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Dữ liệu tài liệu không đúng định dạng"})
+		return
+	}
+
+	audioURL, _ := respData["audio_url"].(string)
+	taiLieuID, _ := taiLieuMap["id"].(string)
+
+	durationFloat, _ := services.GetMP3DurationFromURL(audioURL)
+	totalSeconds := int(durationFloat)
+
+	// ✅ Tính toán VIP status ngay khi tạo
+	isVIP := false
+	if totalSeconds > 180 {
+		isVIP = true // Podcast dài > 3 phút
+	}
+	// Podcast mới luôn là VIP (trong 7 ngày)
+	isVIP = true
+
+	podcast := models.Podcast{
+		ID:             uuid.New().String(),
+		TailieuID:      taiLieuID,
+		TieuDe:         tieuDe,
+		MoTa:           moTa,
+		DuongDanAudio:  audioURL,
+		ThoiLuongGiay:  totalSeconds,
+		HinhAnhDaiDien: hinhAnh,
+		DanhMucID:      danhMucID,
+		TrangThai:      "Tắt",
+		NguoiTao:       userID,
+		TheTag:         theTag,
+		LuotXem:        0,
+		IsVIP:          isVIP, // ✅ Set VIP status
+	}
+
+	if err := db.Create(&podcast).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể tạo podcast", "details": err.Error()})
+		return
+	}
+
+	message := fmt.Sprintf("Admin %s đã tạo podcast: %s", userID, tieuDe)
+	services.CreateNotification(userID, podcast.ID, "create_podcast", message)
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Tạo podcast thành công",
+		"podcast": podcast,
+	})
+}
+
 // ✅ Modified GetPodcast - Tự động sync VIP status
 func GetPodcast(c *gin.Context) {
 	db := config.DB
@@ -832,44 +957,6 @@ func GetPodcast(c *gin.Context) {
 			"total_pages": (total + int64(limit) - 1) / int64(limit),
 		},
 	})
-}
-
-// Tìm kiếm podcast với VIP marking
-func SearchPodcast(c *gin.Context) {
-	db := config.DB
-	search := c.Query("q")
-	status := c.Query("trang_thai")
-
-	if search == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Thiếu từ khoá tìm kiếm"})
-		return
-	}
-
-	var podcasts []models.Podcast
-	query := db.Model(&models.Podcast{}).
-		Where("LOWER(tieu_de) LIKE ? OR LOWER(mo_ta) LIKE ? OR LOWER(the_tag) LIKE ?",
-			"%"+strings.ToLower(search)+"%",
-			"%"+strings.ToLower(search)+"%",
-			"%"+strings.ToLower(search)+"%",
-		).
-		Preload("TaiLieu").Preload("DanhMuc")
-
-	if status != "" {
-		query = query.Where("trang_thai = ?", status)
-	}
-
-	if err := query.Find(&podcasts).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi khi tìm kiếm podcast"})
-		return
-	}
-
-	// ✅ Đánh dấu VIP
-	for i := range podcasts {
-		podcasts[i].IsVIP = CheckPodcastVIPStatus(&podcasts[i])
-	}
-
-	AttachSummary(db, podcasts)
-	c.JSON(http.StatusOK, gin.H{"data": podcasts})
 }
 
 // ✅ Xem chi tiết podcast (WITH VIP CHECK CHỈ CHO USER THƯỜNG)
@@ -992,154 +1079,6 @@ func GetPodcastByID(c *gin.Context) {
 	})
 }
 
-// Lấy danh sách podcast đang tắt
-func GetDisabledPodcasts(c *gin.Context) {
-	db := config.DB
-	var podcasts []models.Podcast
-
-	if err := db.Where("trang_thai = ?", "Tắt").
-		Preload("TaiLieu").Preload("DanhMuc").
-		Order("ngay_tao_ra DESC").Find(&podcasts).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":  "Lỗi khi lấy danh sách podcast bị tắt",
-			"detail": err.Error(),
-		})
-		return
-	}
-
-	// ✅ Đánh dấu VIP
-	for i := range podcasts {
-		podcasts[i].IsVIP = CheckPodcastVIPStatus(&podcasts[i])
-	}
-
-	AttachSummary(db, podcasts)
-
-	c.JSON(http.StatusOK, gin.H{
-		"count": len(podcasts),
-		"data":  podcasts,
-	})
-}
-
-// ✅ Tạo podcast - CHỈ ADMIN
-func CreatePodcastWithUpload(c *gin.Context) {
-	role, _ := c.Get("vai_tro")
-
-	// ✅ Chỉ admin mới được tạo podcast
-	if role != "admin" {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Chỉ admin mới có quyền tạo podcast"})
-		return
-	}
-
-	db := config.DB // ✅ Sử dụng config.DB thay vì MustGet
-	userID := c.GetString("user_id")
-
-	if userID == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Không thể xác định user"})
-		return
-	}
-
-	file, err := c.FormFile("file")
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Không có file đính kèm"})
-		return
-	}
-
-	tieuDe := c.PostForm("tieu_de")
-	danhMucID := c.PostForm("danh_muc_id")
-	if tieuDe == "" || danhMucID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Thiếu tiêu đề hoặc danh mục"})
-		return
-	}
-
-	moTa := c.PostForm("mo_ta")
-	hinhAnh := ""
-	if hinhAnhFile, err := c.FormFile("hinh_anh_dai_dien"); err == nil {
-		imageURL, err := utils.UploadImageToSupabase(hinhAnhFile, uuid.New().String())
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể upload hình ảnh", "details": err.Error()})
-			return
-		}
-		hinhAnh = imageURL
-	}
-
-	theTag := c.PostForm("the_tag")
-	voice := c.DefaultPostForm("voice", "vi-VN-Chirp3-HD-Puck")
-	speakingRateStr := c.DefaultPostForm("speaking_rate", "1.0")
-	rateValue, _ := strconv.ParseFloat(speakingRateStr, 64)
-	if rateValue <= 0 {
-		rateValue = 1.0
-	}
-
-	authHeader := c.GetHeader("Authorization")
-	parts := strings.Split(authHeader, " ")
-	if len(parts) != 2 || parts[0] != "Bearer" {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization header không hợp lệ"})
-		return
-	}
-	token := parts[1]
-
-	respData, err := services.CallUploadDocumentAPI(file, userID, token, voice, rateValue)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi khi gọi UploadDocument", "details": err.Error()})
-		return
-	}
-
-	taiLieuRaw, ok := respData["tai_lieu"]
-	if !ok {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể lấy dữ liệu tài liệu từ UploadDocument"})
-		return
-	}
-
-	taiLieuMap, ok := taiLieuRaw.(map[string]interface{})
-	if !ok {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Dữ liệu tài liệu không đúng định dạng"})
-		return
-	}
-
-	audioURL, _ := respData["audio_url"].(string)
-	taiLieuID, _ := taiLieuMap["id"].(string)
-
-	durationFloat, _ := services.GetMP3DurationFromURL(audioURL)
-	totalSeconds := int(durationFloat)
-
-	// ✅ Tính toán VIP status ngay khi tạo
-	isVIP := false
-	if totalSeconds > 180 {
-		isVIP = true // Podcast dài > 3 phút
-	}
-	// Podcast mới luôn là VIP (trong 7 ngày)
-	isVIP = true
-
-	podcast := models.Podcast{
-		ID:             uuid.New().String(),
-		TailieuID:      taiLieuID,
-		TieuDe:         tieuDe,
-		MoTa:           moTa,
-		DuongDanAudio:  audioURL,
-		ThoiLuongGiay:  totalSeconds,
-		HinhAnhDaiDien: hinhAnh,
-		DanhMucID:      danhMucID,
-		TrangThai:      "Tắt",
-		NguoiTao:       userID,
-		TheTag:         theTag,
-		LuotXem:        0,
-		IsVIP:          isVIP, // ✅ Set VIP status
-	}
-
-	if err := db.Create(&podcast).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể tạo podcast", "details": err.Error()})
-		return
-	}
-
-	message := fmt.Sprintf("Admin %s đã tạo podcast: %s", userID, tieuDe)
-	services.CreateNotification(userID, podcast.ID, "create_podcast", message)
-
-	c.JSON(http.StatusOK, gin.H{
-		"message": "Tạo podcast thành công",
-		"podcast": podcast,
-	})
-}
-
 // ✅ Cập nhật podcast - CHỈ ADMIN
 func UpdatePodcast(c *gin.Context) {
 	role, _ := c.Get("vai_tro")
@@ -1231,70 +1170,6 @@ func UpdatePodcast(c *gin.Context) {
 	})
 }
 
-// Gợi ý podcast tương tự
-func GetRecommendedPodcasts(c *gin.Context) {
-	db := config.DB
-	podcastID := c.Param("id")
-
-	var current models.Podcast
-	if err := db.First(&current, "id = ?", podcastID).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy podcast"})
-		return
-	}
-
-	type PodcastWithStats struct {
-		models.Podcast
-		AvgRating  float64 `json:"avg_rating"`
-		TotalVotes int64   `json:"total_votes"`
-		TomTat     string  `json:"tom_tat"`
-	}
-
-	var recommendations []PodcastWithStats
-
-	if err := db.Table("podcasts p").
-		Select(`p.*, COALESCE(AVG(d.sao),0) AS avg_rating, COUNT(d.id) AS total_votes`).
-		Joins("LEFT JOIN danh_gias d ON d.podcast_id = p.id").
-		Where("p.danh_muc_id = ? AND p.id != ? AND p.trang_thai = ?", current.DanhMucID, current.ID, "Bật").
-		Group("p.id").
-		Order("avg_rating DESC, p.luot_xem DESC, p.ngay_tao_ra DESC").
-		Limit(6).
-		Scan(&recommendations).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể lấy danh sách đề xuất"})
-		return
-	}
-
-	// ✅ Đánh dấu VIP và gán TomTat
-	for i := range recommendations {
-		var tl models.TaiLieu
-		if err := db.First(&tl, "id = ?", recommendations[i].TailieuID).Error; err == nil {
-			recommendations[i].TomTat = tl.TomTat
-		}
-		recommendations[i].IsVIP = CheckPodcastVIPStatus(&recommendations[i].Podcast)
-	}
-
-	// fallback nếu không có cùng danh mục
-	if len(recommendations) == 0 {
-		db.Table("podcasts p").
-			Select(`p.*, COALESCE(AVG(d.sao),0) AS avg_rating, COUNT(d.id) AS total_votes`).
-			Joins("LEFT JOIN danh_gias d ON d.podcast_id = p.id").
-			Where("p.id != ? AND p.trang_thai = ?", current.ID, "Bật").
-			Group("p.id").
-			Order("avg_rating DESC, total_votes DESC").
-			Limit(6).
-			Scan(&recommendations)
-
-		for i := range recommendations {
-			var tl models.TaiLieu
-			if err := db.First(&tl, "id = ?", recommendations[i].TailieuID).Error; err == nil {
-				recommendations[i].TomTat = tl.TomTat
-			}
-			recommendations[i].IsVIP = CheckPodcastVIPStatus(&recommendations[i].Podcast)
-		}
-	}
-
-	c.JSON(http.StatusOK, gin.H{"data": recommendations})
-}
-
 // ✅ Admin toggle VIP status
 func TogglePodcastVIPStatus(c *gin.Context) {
 	role, _ := c.Get("vai_tro")
@@ -1361,5 +1236,162 @@ func SyncAllVIPStatus(c *gin.Context) {
 		"message":        "Đã đồng bộ trạng thái VIP",
 		"total_podcasts": len(podcasts),
 		"updated":        updated,
+	})
+}
+
+// ✅ Các hàm còn lại từ file gốc...
+func SearchPodcast(c *gin.Context) {
+	db := config.DB
+	search := c.Query("q")
+	status := c.Query("trang_thai")
+
+	if search == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Thiếu từ khoá tìm kiếm"})
+		return
+	}
+
+	var podcasts []models.Podcast
+	query := db.Model(&models.Podcast{}).
+		Where("LOWER(tieu_de) LIKE ? OR LOWER(mo_ta) LIKE ? OR LOWER(the_tag) LIKE ?",
+			"%"+strings.ToLower(search)+"%",
+			"%"+strings.ToLower(search)+"%",
+			"%"+strings.ToLower(search)+"%",
+		).
+		Preload("TaiLieu").Preload("DanhMuc")
+
+	if status != "" {
+		query = query.Where("trang_thai = ?", status)
+	}
+
+	if err := query.Find(&podcasts).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi khi tìm kiếm podcast"})
+		return
+	}
+
+	// ✅ Đánh dấu VIP
+	for i := range podcasts {
+		podcasts[i].IsVIP = CheckPodcastVIPStatus(&podcasts[i])
+	}
+
+	AttachSummary(db, podcasts)
+	c.JSON(http.StatusOK, gin.H{"data": podcasts})
+}
+
+func GetDisabledPodcasts(c *gin.Context) {
+	db := config.DB
+	var podcasts []models.Podcast
+
+	if err := db.Where("trang_thai = ?", "Tắt").
+		Preload("TaiLieu").Preload("DanhMuc").
+		Order("ngay_tao_ra DESC").Find(&podcasts).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":  "Lỗi khi lấy danh sách podcast bị tắt",
+			"detail": err.Error(),
+		})
+		return
+	}
+
+	for i := range podcasts {
+		podcasts[i].IsVIP = CheckPodcastVIPStatus(&podcasts[i])
+	}
+
+	AttachSummary(db, podcasts)
+
+	c.JSON(http.StatusOK, gin.H{
+		"count": len(podcasts),
+		"data":  podcasts,
+	})
+}
+
+func GetRecommendedPodcasts(c *gin.Context) {
+	db := config.DB
+	podcastID := c.Param("id")
+
+	var current models.Podcast
+	if err := db.First(&current, "id = ?", podcastID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy podcast"})
+		return
+	}
+
+	type PodcastWithStats struct {
+		models.Podcast
+		AvgRating  float64 `json:"avg_rating"`
+		TotalVotes int64   `json:"total_votes"`
+		TomTat     string  `json:"tom_tat"`
+	}
+
+	var recommendations []PodcastWithStats
+
+	if err := db.Table("podcasts p").
+		Select(`p.*, COALESCE(AVG(d.sao),0) AS avg_rating, COUNT(d.id) AS total_votes`).
+		Joins("LEFT JOIN danh_gias d ON d.podcast_id = p.id").
+		Where("p.danh_muc_id = ? AND p.id != ? AND p.trang_thai = ?", current.DanhMucID, current.ID, "Bật").
+		Group("p.id").
+		Order("avg_rating DESC, p.luot_xem DESC, p.ngay_tao_ra DESC").
+		Limit(6).
+		Scan(&recommendations).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể lấy danh sách đề xuất"})
+		return
+	}
+
+	for i := range recommendations {
+		var tl models.TaiLieu
+		if err := db.First(&tl, "id = ?", recommendations[i].TailieuID).Error; err == nil {
+			recommendations[i].TomTat = tl.TomTat
+		}
+		recommendations[i].IsVIP = CheckPodcastVIPStatus(&recommendations[i].Podcast)
+	}
+
+	if len(recommendations) == 0 {
+		db.Table("podcasts p").
+			Select(`p.*, COALESCE(AVG(d.sao),0) AS avg_rating, COUNT(d.id) AS total_votes`).
+			Joins("LEFT JOIN danh_gias d ON d.podcast_id = p.id").
+			Where("p.id != ? AND p.trang_thai = ?", current.ID, "Bật").
+			Group("p.id").
+			Order("avg_rating DESC, total_votes DESC").
+			Limit(6).
+			Scan(&recommendations)
+
+		for i := range recommendations {
+			var tl models.TaiLieu
+			if err := db.First(&tl, "id = ?", recommendations[i].TailieuID).Error; err == nil {
+				recommendations[i].TomTat = tl.TomTat
+			}
+			recommendations[i].IsVIP = CheckPodcastVIPStatus(&recommendations[i].Podcast)
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": recommendations})
+}
+
+// ✅ Lấy podcast nổi bật
+func GetFeaturedPodcasts(c *gin.Context) {
+	db := config.DB
+	var podcasts []models.Podcast
+
+	// Lấy top 10 podcast có lượt xem cao nhất trong 30 ngày gần đây
+	thirtyDaysAgo := time.Now().AddDate(0, 0, -30)
+
+	if err := db.Where("trang_thai = ? AND ngay_tao_ra >= ?", "Bật", thirtyDaysAgo).
+		Preload("TaiLieu").
+		Preload("DanhMuc").
+		Order("luot_xem DESC").
+		Limit(10).
+		Find(&podcasts).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Không thể lấy danh sách podcast nổi bật",
+		})
+		return
+	}
+
+	// Sync VIP status
+	for i := range podcasts {
+		podcasts[i].IsVIP = CheckPodcastVIPStatus(&podcasts[i])
+	}
+
+	AttachSummary(db, podcasts)
+
+	c.JSON(http.StatusOK, gin.H{
+		"data": podcasts,
 	})
 }
