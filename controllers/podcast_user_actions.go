@@ -186,6 +186,7 @@ func ToggleLuuPodcast(c *gin.Context) {
 }
 
 // ==================== LẤY DANH SÁCH YÊU THÍCH ====================
+// ✅ FIXED: Thêm podcast_id vào response
 func GetMyFavoritePodcasts(c *gin.Context) {
 	userID := c.GetString("user_id")
 	if userID == "" {
@@ -205,6 +206,8 @@ func GetMyFavoritePodcasts(c *gin.Context) {
 	var result []map[string]interface{}
 	for _, item := range list {
 		podcast := map[string]interface{}{
+			// ✅ QUAN TRỌNG: Thêm podcast_id
+			"podcast_id":        item.PodcastID, // ← Dòng này bị thiếu!
 			"id":                item.Podcast.ID,
 			"tieu_de":           item.Podcast.TieuDe,
 			"mo_ta":             item.Podcast.MoTa,
@@ -229,6 +232,7 @@ func GetMyFavoritePodcasts(c *gin.Context) {
 }
 
 // ==================== LẤY DANH SÁCH ĐÃ LƯU ====================
+// ✅ FIXED: Thêm podcast_id vào response
 func GetMySavedPodcasts(c *gin.Context) {
 	userID := c.GetString("user_id")
 	if userID == "" {
@@ -248,6 +252,8 @@ func GetMySavedPodcasts(c *gin.Context) {
 	var result []map[string]interface{}
 	for _, item := range list {
 		podcast := map[string]interface{}{
+			// ✅ QUAN TRỌNG: Thêm podcast_id
+			"podcast_id":        item.PodcastID, // ← Dòng này bị thiếu!
 			"id":                item.Podcast.ID,
 			"tieu_de":           item.Podcast.TieuDe,
 			"mo_ta":             item.Podcast.MoTa,
