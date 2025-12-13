@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"mime/multipart"
 	"net/http"
+	"time"
 
 	"github.com/Huong3203/APIPodcast/config"
 	"github.com/Huong3203/APIPodcast/models"
@@ -30,8 +31,35 @@ func GetProfile(c *gin.Context) {
 		return
 	}
 
-	user.MatKhau = ""
-	c.JSON(http.StatusOK, user)
+	// ✅ Kiểm tra VIP còn hạn hay không
+	isVIP := user.VIP && user.VIPExpires != nil && user.VIPExpires.After(time.Now())
+
+	// ✅ Tính số ngày còn lại
+	var daysRemaining int
+	if isVIP && user.VIPExpires != nil {
+		duration := time.Until(*user.VIPExpires)
+		daysRemaining = int(duration.Hours() / 24)
+		if daysRemaining < 0 {
+			daysRemaining = 0
+			isVIP = false // Nếu âm thì không còn VIP
+		}
+	}
+
+	// ✅ Format response cho frontend
+	c.JSON(http.StatusOK, gin.H{
+		"id":             user.ID,
+		"email":          user.Email,
+		"ho_ten":         user.HoTen,
+		"avatar":         user.Avatar,
+		"vai_tro":        user.VaiTro,
+		"ngay_tao":       user.NgayTao,
+		"kich_hoat":      user.KichHoat,
+		"provider":       user.Provider,
+		"is_vip":         isVIP,           // ✅ Frontend expect field này
+		"vip_expires_at": user.VIPExpires, // ✅ ISO timestamp
+		"days_remaining": daysRemaining,   // ✅ Số ngày còn lại
+		"auto_renew":     user.AutoRenew,
+	})
 }
 
 // =======================
@@ -164,11 +192,38 @@ func GetAllUsers(c *gin.Context) {
 		return
 	}
 
-	for i := range users {
-		users[i].MatKhau = ""
+	// ✅ Format response cho admin với VIP status
+	var response []gin.H
+	for _, user := range users {
+		isVIP := user.VIP && user.VIPExpires != nil && user.VIPExpires.After(time.Now())
+
+		var daysRemaining int
+		if isVIP && user.VIPExpires != nil {
+			duration := time.Until(*user.VIPExpires)
+			daysRemaining = int(duration.Hours() / 24)
+			if daysRemaining < 0 {
+				daysRemaining = 0
+				isVIP = false
+			}
+		}
+
+		response = append(response, gin.H{
+			"id":             user.ID,
+			"email":          user.Email,
+			"ho_ten":         user.HoTen,
+			"avatar":         user.Avatar,
+			"vai_tro":        user.VaiTro,
+			"ngay_tao":       user.NgayTao,
+			"kich_hoat":      user.KichHoat,
+			"provider":       user.Provider,
+			"is_vip":         isVIP,
+			"vip_expires_at": user.VIPExpires,
+			"days_remaining": daysRemaining,
+			"auto_renew":     user.AutoRenew,
+		})
 	}
 
-	c.JSON(http.StatusOK, gin.H{"total": len(users), "users": users})
+	c.JSON(http.StatusOK, gin.H{"total": len(response), "users": response})
 }
 
 func UpdateUserRole(c *gin.Context) {
