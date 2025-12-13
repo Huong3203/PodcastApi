@@ -694,7 +694,7 @@ import (
 )
 
 // ======================= Helper Functions =======================
-// ✅ Helper: Tính toán và UPDATE trạng thái VIP vào database
+// Helper: Tính toán và UPDATE trạng thái VIP vào database
 func UpdatePodcastVIPStatus(db *gorm.DB, podcast *models.Podcast) {
 	shouldBeVIP := CheckPodcastVIPStatus(podcast)
 
@@ -705,7 +705,7 @@ func UpdatePodcastVIPStatus(db *gorm.DB, podcast *models.Podcast) {
 	}
 }
 
-// ✅ Helper: Batch update VIP status cho nhiều podcasts
+// Helper: Batch update VIP status cho nhiều podcasts
 func BatchUpdateVIPStatus(db *gorm.DB, podcasts []models.Podcast) {
 	for i := range podcasts {
 		UpdatePodcastVIPStatus(db, &podcasts[i])
@@ -745,7 +745,7 @@ func CheckPodcastVIPStatus(podcast *models.Podcast) bool {
 	return false
 }
 
-// ✅ Kiểm tra user có VIP hợp lệ không
+// Kiểm tra user có VIP hợp lệ không
 func IsUserVIP(user *models.NguoiDung) bool {
 	if !user.VIP {
 		return false
