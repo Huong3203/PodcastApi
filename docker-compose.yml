@@ -37,7 +37,7 @@ services:
       SUPABASE_KEY: ""
 
       GEMINI_API_KEY: ""
-      API_BASE_URL: https://podcastapi.onrender.com
+      API_BASE_URL: https://podcastapi-production.up.railway.app/
       GOOGLE_APPLICATION_CREDENTIALS: /root/credentials/google-credentials.json
       CLERK_SECRET_KEY: "sk_test_zlsHrueGYeXmsKbEopDSNqnMi0Tzzosjo95QbiTHvY"
     networks:
