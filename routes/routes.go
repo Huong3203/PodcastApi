@@ -71,27 +71,6 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 		}
 	}
 
-	// ============ USER LISTENING HISTORY (Alternative Routes) ============
-	userHistory := api.Group("/user/listening-history")
-	userHistory.Use(middleware.AuthMiddleware(), middleware.DBMiddleware(db))
-	{
-		userHistory.POST("/:podcast_id", controllers.SavePodcastHistory)
-		userHistory.GET("", controllers.GetListeningHistory)
-		userHistory.GET("/:podcast_id", controllers.GetPodcastHistory)
-		userHistory.DELETE("/:podcast_id", controllers.DeletePodcastHistory)
-		userHistory.DELETE("", controllers.ClearAllHistory)
-	}
-
-	// ============ USER FAVORITES (Alternative Routes) ============
-	userFavorites := api.Group("/user/favorites")
-	userFavorites.Use(middleware.AuthMiddleware(), middleware.DBMiddleware(db))
-	{
-		userFavorites.POST("/:podcast_id", controllers.AddFavorite)
-		userFavorites.DELETE("/:podcast_id", controllers.RemoveFavorite)
-		userFavorites.GET("/:podcast_id/check", controllers.CheckFavorite)
-		userFavorites.GET("", controllers.GetFavorites)
-	}
-
 	// ============ USER NOTIFICATIONS ============
 	userNotifications := api.Group("/user/notifications")
 	userNotifications.Use(middleware.AuthMiddleware(), middleware.DBMiddleware(db))

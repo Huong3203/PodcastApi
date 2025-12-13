@@ -17,7 +17,7 @@ var DB *gorm.DB
 func LoadEnv() {
 	err := godotenv.Load()
 	if err != nil {
-		fmt.Println("⚠️  Không tìm thấy file .env, dùng biến môi trường hệ thống.")
+		fmt.Println(" Không tìm thấy file .env, dùng biến môi trường hệ thống.")
 	}
 }
 
@@ -36,7 +36,7 @@ func ConnectDB() {
 	// ✅ Kết nối MySQL
 	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
 	if err != nil {
-		log.Fatalf("❌ Kết nối cơ sở dữ liệu thất bại: %v", err)
+		log.Fatalf("Kết nối cơ sở dữ liệu thất bại: %v", err)
 	}
 	DB = db
 
@@ -47,16 +47,16 @@ func ConnectDB() {
 		&models.TaiLieu{},
 		&models.Podcast{},
 		&models.DanhGia{},
-		&models.Favorite{},
-		&models.SavedPodcast{},
-		&models.ListeningHistory{},
+		&models.PodcastYeuThich{},
+		&models.PodcastLuu{},
+		&models.LichSuNghe{},
 		&models.Notification{},
 	)
 	if err != nil {
-		log.Fatalf("❌ Auto migration thất bại: %v", err)
+		log.Fatalf("Auto migration thất bại: %v", err)
 	}
 
-	fmt.Println("✅ Đã kết nối MySQL thành công và AutoMigrate xong!")
+	fmt.Println("Đã kết nối MySQL thành công và AutoMigrate xong!")
 
 	// ✅ Connection pool settings
 	sqlDB, err := db.DB()

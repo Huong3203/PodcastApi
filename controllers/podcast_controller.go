@@ -1034,36 +1034,41 @@ func GetPodcastByID(c *gin.Context) {
 	// ✅ Được phép truy cập - tăng lượt xem
 	db.Model(&podcast).UpdateColumn("luot_xem", gorm.Expr("luot_xem + ?", 1))
 
-	// AUTO-SAVE LISTENING HISTORY
+	// ✅ AUTO-SAVE LISTENING HISTORY - Fixed to use string IDs
 	userIDStr := c.GetString("user_id")
 	if userIDStr != "" {
-		userID, err := uuid.Parse(userIDStr)
-		if err == nil {
-			podcastID, _ := uuid.Parse(id)
+		var history models.LichSuNghe
+		now := time.Now()
 
-			var history models.ListeningHistory
-			now := time.Now()
+		result := db.Where("nguoi_dung_id = ? AND podcast_id = ?", userIDStr, id).First(&history)
 
-			result := db.Where("user_id = ? AND podcast_id = ?", userID, podcastID).First(&history)
-
-			if result.Error == gorm.ErrRecordNotFound {
-				history = models.ListeningHistory{
-					ID:        uuid.New(),
-					UserID:    userID,
-					PodcastID: podcastID,
-				}
-				db.Create(&history)
-			} else if result.Error == nil {
-				history.ListenedAt = now
-				db.Save(&history)
+		if result.Error == gorm.ErrRecordNotFound {
+			// Tạo mới lịch sử
+			history = models.LichSuNghe{
+				ID:          uuid.New().String(),
+				NguoiDungID: userIDStr,
+				PodcastID:   id,
+				ViTri:       0,
+				NgayNghe:    now,
+			}
+			if err := db.Create(&history).Error; err != nil {
+				// Log error nhưng không block response
+				fmt.Printf("Lỗi khi lưu lịch sử nghe: %v\n", err)
+			}
+		} else if result.Error == nil {
+			// Cập nhật thời gian nghe
+			if err := db.Model(&history).Update("ngay_nghe", now).Error; err != nil {
+				fmt.Printf("Lỗi khi cập nhật lịch sử nghe: %v\n", err)
 			}
 		}
 	}
 
+	// Attach summary
 	if podcast.TailieuID != "" {
 		podcast.TomTat = podcast.TaiLieu.TomTat
 	}
 
+	// Lấy podcast liên quan
 	var related []models.Podcast
 	db.Preload("TaiLieu").Preload("DanhMuc").
 		Where("danh_muc_id = ? AND id != ?", podcast.DanhMucID, podcast.ID).
